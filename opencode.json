@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "amap_gis": {
+      "type": "local",
+      "command": [
+        "python",
+        "-m",
+        "amap_mcp.server"
+      ],
+      "enabled": true,
+      "environment": {
+        "AMAP_API_KEY": "{env:AMAP_API_KEY}",
+        "AMAP_DOTENV_PATH": "{workspaceRoot}/.env"
+      },
+      "timeout": 10000
+    }
+  },
+  "agent": {
+    "gis-navigator": {
+      "mode": "subagent",
+      "description": "负责地理查询与路径导航的 GIS 智能体",
+      "tools": {
+        "amap_gis_*": true,
+        "webfetch": false,
+        "bash": false,
+        "write": false,
+        "edit": false
+      }
+    }
+  }
+}
