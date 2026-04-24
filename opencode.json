@@ -27,6 +27,9 @@
           "route-planner": "allow"
         }
       },
+      "skills": {
+        "geocode-candidates-check": true
+      },
       "tools": {
         "amap_gis_*": false,
         "webfetch": false,
