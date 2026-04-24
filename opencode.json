@@ -17,11 +17,18 @@
     }
   },
   "agent": {
-    "gis-navigator": {
-      "mode": "subagent",
-      "description": "负责地理查询与路径导航的 GIS 智能体",
+    "gis-orchestrator": {
+      "mode": "primary",
+      "description": "GIS 主调度智能体 - 管理地名查询、距离量算、路径规划三个子智能体",
+      "permission": {
+        "task": {
+          "geocoder": "allow",
+          "distance-measure": "allow",
+          "route-planner": "allow"
+        }
+      },
       "tools": {
-        "amap_gis_*": true,
+        "amap_gis_*": false,
         "webfetch": false,
         "bash": false,
         "write": false,
