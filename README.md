@@ -23,6 +23,7 @@
 ## 开发
 
 ### 安装依赖
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -32,3 +33,7 @@ pip install -r requirements.txt
 cp .env.example .env
 AMAP_API_KEY=your_key
 ```
+
+## Acknowledgement
+
+感谢国防科技大学电子科学学院对本项目的资助。
