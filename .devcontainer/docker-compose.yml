@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  aigis-dev:
+    image: ghcr.io/pengweewang/aigis-dev:latest
+    user: aigis
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../..:/work:cached
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined

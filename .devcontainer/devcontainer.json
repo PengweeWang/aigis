@@ -1,0 +1,15 @@
+{
+    "name": "AIGIS Dev Container",
+    "dockerComposeFile": "./docker-compose.yml",
+    "service": "aigis-dev",
+    "remoteUser": "aigis",
+    "updateRemoteUserUID": true,
+    "workspaceFolder": "/work/${localWorkspaceFolderBasename}",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+
+            ]
+        }
+    }
+}
