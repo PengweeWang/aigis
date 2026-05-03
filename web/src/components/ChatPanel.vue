@@ -2,9 +2,13 @@
   <div class="chat-panel">
     <div class="chat-header">
       <h3>GIS 智能体对话</h3>
-      <el-button circle @click="createNewSession">
-        <span>+</span>
-      </el-button>
+      <el-tooltip content="新建会话" placement="bottom">
+        <el-button class="new-session-btn" :size="'small'" circle @click="createNewSession">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </el-button>
+      </el-tooltip>
     </div>
 
     <ElABubbleList ref="bubbleListRef" class="chat-messages">
@@ -257,13 +261,30 @@ init()
   background: #f8f9fa;
 }
 
-:deep(.el-button) {
-  background: #667eea;
-  color: white;
-  border: none;
+.new-session-btn {
+  background: radial-gradient(circle at center, #b0b0b0 0%, #d8d8d8 70%, #e8e8e8 100%) !important;
+  color: #666 !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  line-height: 32px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
 }
 
-:deep(.el-button:hover) {
-  background: #5568d3;
+.new-session-btn:hover {
+  background: radial-gradient(circle at center, #a0a0a0 0%, #c8c8c8 70%, #d8d8d8 100%) !important;
+}
+
+.new-session-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
 }
 </style>
