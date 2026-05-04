@@ -8,8 +8,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.4.0",
-    "element-ai-vue": "^0.1.6"
+    "@amap/amap-jsapi-loader": "^1.0.1",
+    "element-ai-vue": "^0.1.6",
+    "vue": "^3.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",

@@ -8,14 +8,27 @@
 
 ## 启动步骤
 
-### 1. 安装依赖
+### 1. 配置地图密钥
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 文件，填入高德地图 Web API 的 Key 和 Security Code：
+
+```
+VITE_AMAP_KEY=your_amap_web_api_key_here
+VITE_AMAP_SECURITY_CODE=your_amap_security_code_here
+```
+
+### 2. 安装依赖
 
 ```bash
 cd web
 npm install
 ```
 
-### 2. 启动OpenCode服务器
+### 3. 启动OpenCode服务器
 
 在项目根目录运行：
 
@@ -27,20 +40,20 @@ opencode serve --cors http://localhost:8080
 - `--cors` 参数允许前端页面跨域访问
 - 默认端口 4096
 
-### 3. 启动Web服务器
+### 4. 启动Web服务器
 
 ```bash
 npm run dev
 ```
 
-### 4. 访问界面
+### 5. 访问界面
 
 打开浏览器访问：`http://localhost:8080`
 
 ## 功能说明
 
 - 左侧悬浮面板：与 gis-orchestrator 智能体对话
-- 底层：地图界面（暂未实现）
+- 底层：地图界面
 - 支持新建会话、发送消息
 
 ## 目录结构

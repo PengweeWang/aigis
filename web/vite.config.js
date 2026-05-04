@@ -13,6 +13,14 @@ export default defineConfig({
       '/session': {
         target: 'http://127.0.0.1:4096',
         changeOrigin: true
+      },
+      '/config': {
+        target: 'http://127.0.0.1:4096',
+        changeOrigin: true
+      },
+      '/provider': {
+        target: 'http://127.0.0.1:4096',
+        changeOrigin: true
       }
     }
   }

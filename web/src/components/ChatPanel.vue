@@ -32,6 +32,18 @@
     </ElABubbleList>
 
     <div class="chat-input-area">
+      <div class="input-toolbar">
+        <div class="model-select-wrapper">
+          <svg class="model-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+          <select v-model="selectedModel" class="model-select" @change="handleModelChange">
+            <option v-for="m in modelOptions" :key="m.value" :value="m.value">
+              {{ m.label }}
+            </option>
+          </select>
+        </div>
+      </div>
       <ElASender
         v-model="inputText"
         placeholder="请输入您的问题..."
@@ -42,15 +54,18 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, inject } from 'vue'
 import { ElABubble, ElABubbleList, ElASender, ElAThinking, ElAMarkdown } from 'element-ai-vue'
 
 const SERVER_URL = 'http://127.0.0.1:4096'
 const bubbleListRef = ref(null)
+const mapContainer = inject('mapContainer')
 
 const messages = ref([])
 const inputText = ref('')
 const currentSessionId = ref(null)
+const modelOptions = ref([])
+const selectedModel = ref('')
 
 async function checkServerHealth() {
   try {
@@ -120,6 +135,34 @@ function addReasoningMessage(text) {
   scrollToBottom()
 }
 
+async function fetchModels() {
+  try {
+    const response = await fetch(`${SERVER_URL}/config/providers`)
+    if (!response.ok) return
+    const data = await response.json()
+    const options = []
+    for (const provider of data.providers || []) {
+      for (const model of Object.values(provider.models || {})) {
+        options.push({
+          value: model.id,
+          providerID: model.providerID,
+          label: `${provider.name} - ${model.name || model.id}`,
+        })
+      }
+    }
+    if (options.length === 0) return
+    modelOptions.value = options
+    selectedModel.value = options.find(o => o.value === 'minimax-m2.5-free')?.value
+      || options[0].value
+  } catch {
+    // ignore
+  }
+}
+
+function handleModelChange() {
+  // model selection changed
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (bubbleListRef.value?.scrollToBottom) {
@@ -154,6 +197,10 @@ async function handleSend(text) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         agent: 'gis-orchestrator',
+        model: selectedModel.value ? (() => {
+          const m = modelOptions.value.find(o => o.value === selectedModel.value)
+          return m ? { providerID: m.providerID, modelID: m.value } : undefined
+        })() : undefined,
         parts: [{ type: 'text', text }]
       })
     })
@@ -196,10 +243,40 @@ function renderResponseParts(parts) {
   }
 }
 
+function testMapFunctions() {
+  console.log('[MapTest] 开始测试地图功能')
+  if (!mapContainer) {
+    console.warn('[MapTest] mapContainer 未找到，请检查 provide/inject')
+    return
+  }
+  console.log('[MapTest] mapContainer 已获取:', mapContainer)
+  setTimeout(() => {
+    console.log('[MapTest] 执行 setCenter([116.40, 39.91], 13)')
+    mapContainer.setCenter([116.40, 39.91], 13)
+    console.log('[MapTest] 执行 addMarker([116.40, 39.91])')
+    mapContainer.addMarker([116.40, 39.91], {
+      title: '测试标记',
+      label: { content: '测试点', direction: 'top' },
+    })
+    console.log('[MapTest] 执行 addPolyline([[116.39,39.90], [116.40,39.91], [116.41,39.90]])')
+    mapContainer.addPolyline([
+      [116.39, 39.90],
+      [116.40, 39.91],
+      [116.41, 39.90],
+    ], {
+      strokeColor: '#FF0000',
+      strokeWeight: 4,
+    })
+    console.log('[MapTest] 地图功能测试完成')
+  }, 2000)
+}
+
 async function init() {
   const connected = await checkServerHealth()
   if (connected) {
+    await fetchModels()
     await createSession()
+    // testMapFunctions()
   }
 }
 
@@ -256,9 +333,52 @@ init()
 }
 
 .chat-input-area {
-  padding: 16px;
+  padding: 8px 16px 16px;
   border-top: 1px solid #eee;
   background: #f8f9fa;
+}
+
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.model-select-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.model-icon {
+  color: #666;
+  flex-shrink: 0;
+}
+
+.model-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 5px 24px 5px 10px;
+  font-size: 12px;
+  color: #444;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center;
+  cursor: pointer;
+  outline: none;
+  min-width: 140px;
+  max-width: 200px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.model-select:hover {
+  border-color: #b0b0b0;
+}
+
+.model-select:focus {
+  border-color: #909399;
+  box-shadow: 0 0 0 2px rgba(144, 147, 153, 0.15);
 }
 
 .new-session-btn {
@@ -277,10 +397,6 @@ init()
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-}
-
-.new-session-btn:hover {
-  background: radial-gradient(circle at center, #a0a0a0 0%, #c8c8c8 70%, #d8d8d8 100%) !important;
 }
 
 .new-session-btn:active {

@@ -107,6 +107,23 @@ async def amap_get(path: str, params: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
+def _parse_polyline(polyline_raw: Optional[str]) -> Optional[List[List[float]]]:
+    if not polyline_raw:
+        return None
+    coords = []
+    for pair in polyline_raw.split(";"):
+        pair = pair.strip()
+        if not pair:
+            continue
+        parts = pair.split(",")
+        if len(parts) == 2:
+            try:
+                coords.append([float(parts[0]), float(parts[1])])
+            except ValueError:
+                continue
+    return coords if coords else None
+
+
 def _compact_walk_steps(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
     for step in steps:
@@ -118,6 +135,7 @@ def _compact_walk_steps(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "duration_s": step.get("duration"),
                 "action": step.get("action"),
                 "assistant_action": step.get("assistant_action"),
+                "polyline": _parse_polyline(step.get("polyline")),
             }
         )
     return result
@@ -135,9 +153,19 @@ def _compact_drive_steps(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "tolls": step.get("tolls"),
                 "action": step.get("action"),
                 "assistant_action": step.get("assistant_action"),
+                "polyline": _parse_polyline(step.get("polyline")),
             }
         )
     return result
+
+
+def _combine_route_polyline(steps: List[Dict[str, Any]]) -> Optional[List[List[float]]]:
+    coords: List[List[float]] = []
+    for step in steps:
+        polyline = _parse_polyline(step.get("polyline"))
+        if polyline:
+            coords.extend(polyline)
+    return coords if coords else None
 
 
 mcp = FastMCP("amap-gis-mcp")
@@ -157,31 +185,7 @@ async def geocode(address: str, city: Optional[str] = None) -> str:
         params["city"] = city
 
     data = await amap_get("/v3/geocode/geo", params)
-    geocodes = data.get("geocodes", [])
-    if not geocodes:
-        return json.dumps(
-            {"query": address, "result": None}, ensure_ascii=False, indent=2
-        )
-
-    first = geocodes[0]
-    output = {
-        "query": address,
-        "city": city,
-        "result": {
-            "formatted": {
-                "province": first.get("province"),
-                "city": first.get("city"),
-                "district": first.get("district"),
-                "street": first.get("street"),
-                "number": first.get("number"),
-            },
-            "location": first.get("location"),
-            "adcode": first.get("adcode"),
-            "level": first.get("level"),
-        },
-        "candidates": len(geocodes),
-    }
-    return json.dumps(output, ensure_ascii=False, indent=2)
+    return json.dumps(data, ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
@@ -250,126 +254,76 @@ async def route_planning(
     origin: str,
     destination: str,
     mode: str = "driving",
-    city: Optional[str] = None,
     strategy: Optional[int] = None,
     extensions: str = "base",
 ) -> str:
     """
-    路径规划（步行/驾车/公交）。
+    路径规划（步行/驾车/骑行）。
 
     参数:
     - origin: 起点，经度,纬度
     - destination: 终点，经度,纬度
-    - mode: driving | walking | transit
-    - city: 公交模式必填，城市名或 citycode
-    - strategy: 驾车或公交策略（可选）
+    - mode: walking | driving | cycling
+    - strategy: 驾车策略（可选）
     - extensions: base 或 all
     """
-    if mode not in {"driving", "walking", "transit"}:
-        raise ValueError("mode must be one of: driving, walking, transit")
+    if mode not in {"walking", "driving", "cycling"}:
+        raise ValueError("mode must be one of: walking, driving, cycling")
     if extensions not in {"base", "all"}:
         raise ValueError("extensions must be 'base' or 'all'")
 
-    if mode == "walking":
-        data = await amap_get(
-            "/v3/direction/walking",
-            {
-                "origin": origin,
-                "destination": destination,
-                "output": "JSON",
-            },
-        )
-        paths = data.get("route", {}).get("paths", [])
-        if not paths:
-            return json.dumps(
-                {"mode": mode, "result": None}, ensure_ascii=False, indent=2
-            )
-        best = paths[0]
-        out = {
-            "mode": mode,
-            "origin": origin,
-            "destination": destination,
-            "distance_m": best.get("distance"),
-            "duration_s": best.get("duration"),
-            "steps": _compact_walk_steps(best.get("steps", [])[:30]),
-        }
-        return json.dumps(out, ensure_ascii=False, indent=2)
+    api_path: str
+    params: Dict[str, Any] = {"output": "JSON"}
+    step_limit: int = 60
 
-    if mode == "driving":
-        params: Dict[str, Any] = {
-            "origin": origin,
-            "destination": destination,
-            "extensions": extensions,
-            "output": "JSON",
-        }
+    if mode == "walking":
+        api_path = "/v3/direction/walking"
+        params["origin"] = origin
+        params["destination"] = destination
+        step_limit = 30
+    elif mode == "driving":
+        api_path = "/v3/direction/driving"
+        params["origin"] = origin
+        params["destination"] = destination
+        params["extensions"] = extensions
         if strategy is not None:
             params["strategy"] = strategy
+    else:
+        api_path = "/v3/direction/bicycling"
+        params["origin"] = origin
+        params["destination"] = destination
+        step_limit = 30
 
-        data = await amap_get("/v3/direction/driving", params)
-        route = data.get("route", {})
-        paths = route.get("paths", [])
-        if not paths:
-            return json.dumps(
-                {"mode": mode, "result": None}, ensure_ascii=False, indent=2
-            )
-        best = paths[0]
-        out = {
-            "mode": mode,
-            "origin": origin,
-            "destination": destination,
-            "distance_m": best.get("distance"),
-            "duration_s": best.get("duration"),
-            "tolls": best.get("tolls"),
-            "taxi_cost": route.get("taxi_cost"),
-            "strategy": best.get("strategy"),
-            "steps": _compact_drive_steps(best.get("steps", [])[:60]),
-        }
-        return json.dumps(out, ensure_ascii=False, indent=2)
-
-    if not city:
-        raise ValueError("city is required when mode='transit'")
-
-    params = {
-        "origin": origin,
-        "destination": destination,
-        "city": city,
-        "extensions": extensions,
-        "output": "JSON",
-    }
-    if strategy is not None:
-        params["strategy"] = strategy
-
-    data = await amap_get("/v3/direction/transit/integrated", params)
+    data = await amap_get(api_path, params)
     route = data.get("route", {})
-    transits = route.get("transits", [])
-    if not transits:
-        return json.dumps({"mode": mode, "result": None}, ensure_ascii=False, indent=2)
-
-    best = transits[0]
-    segments = best.get("segments", [])
-    segment_summary = []
-    for seg in segments[:20]:
-        buslines = seg.get("bus", {}).get("buslines", [])
-        walking = seg.get("walking", {})
-        segment_summary.append(
-            {
-                "walking_distance_m": walking.get("distance"),
-                "buslines": [line.get("name") for line in buslines[:3]],
-            }
+    paths = route.get("paths", [])
+    if not paths:
+        return json.dumps(
+            {"mode": mode, "result": None}, ensure_ascii=False, indent=2
         )
 
-    out = {
+    best = paths[0]
+    steps = best.get("steps", [])[:step_limit]
+
+    out: Dict[str, Any] = {
         "mode": mode,
         "origin": origin,
         "destination": destination,
-        "city": city,
-        "distance_m": route.get("distance"),
+        "distance_m": best.get("distance"),
         "duration_s": best.get("duration"),
-        "cost": best.get("cost"),
-        "walking_distance_m": best.get("walking_distance"),
-        "taxi_cost": route.get("taxi_cost"),
-        "segments": segment_summary,
+        "route_polyline": _combine_route_polyline(steps),
     }
+
+    if mode == "walking":
+        out["steps"] = _compact_walk_steps(steps)
+    elif mode == "driving":
+        out["steps"] = _compact_drive_steps(steps)
+        out["tolls"] = best.get("tolls")
+        out["taxi_cost"] = route.get("taxi_cost")
+        out["strategy"] = best.get("strategy")
+    else:
+        out["steps"] = _compact_walk_steps(steps)
+
     return json.dumps(out, ensure_ascii=False, indent=2)
 
 
