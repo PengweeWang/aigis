@@ -2,3 +2,5 @@
 .env*
 !.env.example
 .claude/
+.opencode/skills/amap-jsapi-skill/
+.opencode/skills/element-ai-vue-helper/
