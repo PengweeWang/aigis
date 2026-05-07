@@ -13,18 +13,22 @@
         "AMAP_API_KEY": "{env:AMAP_API_KEY}",
         "AMAP_DOTENV_PATH": "{workspaceRoot}/.env"
       },
-      "timeout": 10000
+      "timeout": 30000
     }
   },
   "agent": {
     "gis-orchestrator": {
       "mode": "primary",
-      "description": "GIS 主调度智能体 - 管理地名查询、距离量算、路径规划三个子智能体",
+      "description": "GIS 主调度智能体 - 管理地名查询、距离量算、路径规划、POI搜索、天气查询等子智能体",
       "permission": {
         "task": {
           "geocoder": "allow",
           "distance-measure": "allow",
-          "route-planner": "allow"
+          "route-planner": "allow",
+          "poi-searcher": "allow",
+          "weather-assistant": "allow",
+          "district-queryer": "allow",
+          "transit-planner": "allow"
         }
       },
       "skills": {
@@ -32,6 +36,54 @@
       },
       "tools": {
         "amap_gis_*": false,
+        "webfetch": false,
+        "bash": false,
+        "write": false,
+        "edit": false
+      }
+    },
+    "poi-searcher": {
+      "mode": "subagent",
+      "description": "POI搜索智能体 - 处理兴趣点搜索、周边查询、商户查找等",
+      "tools": {
+        "amap_gis_poi_keyword_search": true,
+        "amap_gis_poi_around_search": true,
+        "amap_gis_poi_detail_search": true,
+        "task": true,
+        "webfetch": false,
+        "bash": false,
+        "write": false,
+        "edit": false
+      }
+    },
+    "weather-assistant": {
+      "mode": "subagent",
+      "description": "天气查询智能体 - 处理城市天气查询、天气预报等",
+      "tools": {
+        "amap_gis_weather_search": true,
+        "webfetch": false,
+        "bash": false,
+        "write": false,
+        "edit": false
+      }
+    },
+    "district-queryer": {
+      "mode": "subagent",
+      "description": "行政区域查询智能体 - 处理行政区划、区域边界、区划编码等",
+      "tools": {
+        "amap_gis_district_search": true,
+        "webfetch": false,
+        "bash": false,
+        "write": false,
+        "edit": false
+      }
+    },
+    "transit-planner": {
+      "mode": "subagent",
+      "description": "公交路径规划智能体 - 处理公交/地铁等公共交通出行方案",
+      "tools": {
+        "amap_gis_public_transit_planning": true,
+        "task": true,
         "webfetch": false,
         "bash": false,
         "write": false,

@@ -171,6 +171,20 @@ def _combine_route_polyline(steps: List[Dict[str, Any]]) -> Optional[List[List[f
 mcp = FastMCP("amap-gis-mcp")
 
 
+# ---- 自动加载 amap_skill 扩展技能 ----
+from amap_skill import load_all_skills
+
+for _skill in load_all_skills():
+    _s = _skill  # capture in closure
+
+    async def _tool_fn(**kwargs):
+        return await _s.execute(**kwargs)
+
+    _tool_fn.__name__ = _skill.name
+    _tool_fn.__doc__ = _skill.description
+    mcp.tool(name=_skill.name, description=_skill.description)(_tool_fn)
+
+
 @mcp.tool()
 async def geocode(address: str, city: Optional[str] = None) -> str:
     """
