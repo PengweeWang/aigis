@@ -13,14 +13,158 @@
 
     <ElABubbleList ref="bubbleListRef" class="chat-messages">
       <template v-for="msg in messages" :key="msg.id">
+        <!-- 用户消息 -->
         <ElABubble
-          v-if="msg.type === 'message'"
+          v-if="msg.type === 'message' && msg.role === 'user'"
           :placement="msg.role === 'user' ? 'end' : 'start'"
           :content="msg.content"
           :typing="msg.role === 'assistant' && msg.typing"
           :loading="msg.loading"
           :is-markdown="msg.role === 'assistant'"
         />
+
+        <!-- 助手消息 - 坐标查询结果 -->
+        <ElABubble
+          v-else-if="msg.type === 'message' && msg.role === 'assistant' && msg.contentType === 'geocode'"
+          :placement="msg.role === 'user' ? 'end' : 'start'"
+          :content="msg.content"
+          :typing="false"
+          :loading="false"
+          :is-markdown="false"
+        >
+          <template #default="{ content }">
+            <div class="geocode-result">
+              <h4>📍 地址查询结果</h4>
+              <div class="result-item">
+                <span class="label">地址：</span>
+                <span>{{ content.address }}</span>
+              </div>
+              <div class="result-item">
+                <span class="label">坐标：</span>
+                <span>{{ content.location[0].toFixed(6) }}, {{ content.location[1].toFixed(6) }}</span>
+              </div>
+              <div class="result-item" v-if="content.province">
+                <span class="label">行政区划：</span>
+                <span>{{ content.province }} {{ content.city }} {{ content.district }}</span>
+              </div>
+            </div>
+          </template>
+        </ElABubble>
+
+        <!-- 助手消息 - 距离计算结果 -->
+        <ElABubble
+          v-else-if="msg.type === 'message' && msg.role === 'assistant' && msg.contentType === 'distance'"
+          :placement="msg.role === 'user' ? 'end' : 'start'"
+          :content="msg.content"
+          :typing="false"
+          :loading="false"
+          :is-markdown="false"
+        >
+          <template #default="{ content }">
+            <div class="distance-result">
+              <h4>📏 距离计算结果</h4>
+              <div class="result-item">
+                <span class="label">起点：</span>
+                <span>{{ content.origin.address }}</span>
+              </div>
+              <div class="result-item">
+                <span class="label">终点：</span>
+                <span>{{ content.destination.address }}</span>
+              </div>
+              <div class="distance-info">
+                <span class="distance-number">{{ content.distance_km }}</span>
+                <span class="distance-unit">公里</span>
+                <span class="distance-detail">（{{ content.distance_m.toFixed(0) }} 米）</span>
+              </div>
+            </div>
+          </template>
+        </ElABubble>
+
+        <!-- 助手消息 - 路径规划结果 -->
+        <ElABubble
+          v-else-if="msg.type === 'message' && msg.role === 'assistant' && msg.contentType === 'route'"
+          :placement="msg.role === 'user' ? 'end' : 'start'"
+          :content="msg.content"
+          :typing="false"
+          :loading="false"
+          :is-markdown="false"
+        >
+          <template #default="{ content }">
+            <div class="route-result">
+              <h4>
+                {{ content.mode === 'driving' ? '🚗 驾车' : content.mode === 'cycling' ? '🚲 骑行' : '🚶 步行' }}路径规划
+              </h4>
+              <div class="result-item">
+                <span class="label">起点：</span>
+                <span>{{ content.origin.address }}</span>
+              </div>
+              <div class="result-item">
+                <span class="label">终点：</span>
+                <span>{{ content.destination.address }}</span>
+              </div>
+              <div class="route-summary">
+                <div class="summary-item">
+                  <span class="summary-label">距离：</span>
+                  <span class="summary-value">{{ content.distance_km }} 公里</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">预计时间：</span>
+                  <span class="summary-value">{{ content.durationText }}</span>
+                </div>
+                <div class="summary-item" v-if="content.tolls">
+                  <span class="summary-label">过路费：</span>
+                  <span class="summary-value">约 ¥{{ content.tolls }}</span>
+                </div>
+              </div>
+              <div class="route-steps" v-if="content.steps && content.steps.length > 0">
+                <h5>导航步骤（前5步）：</h5>
+                <div v-for="(step, index) in content.steps.slice(0, 5)" :key="index" class="step-item">
+                  <div class="step-number">{{ index + 1 }}</div>
+                  <div class="step-content">{{ step.instruction }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </ElABubble>
+
+        <!-- 助手消息 - 选择交互 -->
+        <ElABubble
+          v-else-if="msg.type === 'message' && msg.role === 'assistant' && msg.contentType === 'selection'"
+          :placement="msg.role === 'user' ? 'end' : 'start'"
+          :content="msg.content"
+          :typing="false"
+          :loading="false"
+          :is-markdown="false"
+        >
+          <template #default="{ content }">
+            <div class="selection-result">
+              <h4>⚠️ {{ content.message }}</h4>
+              <div class="selection-options">
+                <ElAButton
+                  v-for="option in content.options"
+                  :key="option.id"
+                  type="primary"
+                  size="small"
+                  style="margin-right: 8px; margin-bottom: 8px;"
+                  @click="selectOption(option)"
+                >
+                  {{ option.label }}
+                </ElAButton>
+              </div>
+            </div>
+          </template>
+        </ElABubble>
+
+        <!-- 助手消息 - 普通文本 -->
+        <ElABubble
+          v-else-if="msg.type === 'message' && msg.role === 'assistant'"
+          :placement="msg.role === 'user' ? 'end' : 'start'"
+          :content="msg.content"
+          :typing="msg.role === 'assistant' && msg.typing"
+          :loading="msg.loading"
+          :is-markdown="msg.role === 'assistant'"
+        />
+
         <ElAThinking
           v-else-if="msg.type === 'reasoning'"
           v-model="msg.expanded"
@@ -210,7 +354,7 @@ async function handleSend(text) {
 
     if (response.ok) {
       const result = await response.json()
-      renderResponseParts(result.parts)
+      processResponse(result)
     } else {
       const errorText = await response.text()
       addMessage('assistant', `请求失败: ${errorText}`)
@@ -221,27 +365,102 @@ async function handleSend(text) {
   }
 }
 
-function renderResponseParts(parts) {
-  let reasoningText = ''
-  let answerText = ''
+/**
+ * 处理后端响应
+ */
+function processResponse(response) {
+  try {
+    // 尝试解析为结构化JSON
+    const parsed = ResponseParser.parse(response)
 
-  for (const part of parts) {
-    if (part.type === 'reasoning') {
-      reasoningText += part.text
-    } else if (part.type === 'text') {
-      answerText += part.text
+    // 执行地图操作
+    if (parsed.mapActions && parsed.mapActions.length > 0) {
+      executeMapActions(parsed.mapActions)
     }
+
+    // 根据类型添加不同的消息
+    addStructuredMessage(parsed)
+  } catch (e) {
+    // 如果解析失败，当作普通文本处理
+    addMessage('assistant', JSON.stringify(response, null, 2))
+  }
+}
+
+/**
+ * 执行地图操作
+ */
+function executeMapActions(actions) {
+  if (!mapContainer) return
+
+  actions.forEach(action => {
+    const { action: actionName, params } = action
+    if (typeof mapContainer[actionName] === 'function') {
+      if (actionName === 'setCenter') {
+        mapContainer[actionName](params.position, params.zoom)
+      } else if (actionName === 'addMarker') {
+        mapContainer[actionName](params.position, params)
+      } else if (actionName === 'addPolyline') {
+        mapContainer[actionName](params.path, params)
+      } else if (actionName === 'setFitView') {
+        mapContainer[actionName](params.positions)
+      } else {
+        mapContainer[actionName]()
+      }
+    }
+  })
+}
+
+/**
+ * 添加结构化消息
+ */
+function addStructuredMessage(parsed) {
+  const messageId = Date.now().toString()
+
+  switch (parsed.type) {
+    case 'geocode':
+      messages.value.push({
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        contentType: 'geocode',
+        content: parsed.data
+      })
+      break
+    case 'distance':
+      messages.value.push({
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        contentType: 'distance',
+        content: parsed.data
+      })
+      break
+    case 'route':
+      messages.value.push({
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        contentType: 'route',
+        content: parsed.data
+      })
+      break
+    case 'selection':
+      messages.value.push({
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        contentType: 'selection',
+        content: parsed.data
+      })
+      break
+    case 'error':
+      addMessage('assistant', `❌ ${parsed.data.message}`)
+      break
+    default:
+      addMessage('assistant', parsed.data.content)
   }
 
-  if (reasoningText) {
-    addReasoningMessage(reasoningText)
-  }
-  if (answerText) {
-    addMessage('assistant', answerText)
-  }
-  if (!reasoningText && !answerText) {
-    addMessage('assistant', '回答内容为空')
-  }
+  scrollToBottom()
 }
 
 function testMapFunctions() {
