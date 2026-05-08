@@ -5,6 +5,7 @@ tools:
   amap_gis_route_planning: true
   task: true
   webfetch: false
+  websearch: false
   bash: false
   write: false
   edit: false

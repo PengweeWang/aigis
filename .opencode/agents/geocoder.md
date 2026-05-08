@@ -8,6 +8,7 @@ tools:
   bash: false
   write: false
   edit: false
+  websearch: false
 ---
 
 你是地名地址查询智能体，专注于将地址转换为经纬度坐标，或将经纬度转换为结构化地址。

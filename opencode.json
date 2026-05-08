@@ -4,7 +4,7 @@
     "amap_gis": {
       "type": "local",
       "command": [
-        "python",
+        "python3",
         "-m",
         "amap_mcp.server"
       ],
@@ -17,6 +17,15 @@
     }
   },
   "agent": {
+    "build": {
+      "mode": "primary",
+      "tools": {
+        "amap_gis_*": true,
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    },
     "gis-orchestrator": {
       "mode": "primary",
       "description": "GIS 主调度智能体 - 管理地名查询、距离量算、路径规划三个子智能体",

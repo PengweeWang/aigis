@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -328,43 +329,45 @@ async def route_planning(
 
 
 @mcp.tool()
-async def distance_measure(origin: str, destination: str, mode: str = "driving") -> str:
+async def distance_measure(origin: str, destination: str) -> str:
     """
-    距离量算（基于路径规划距离）。
+    距离量算（基于经纬度直线距离）。
 
     参数:
     - origin: 起点，经度,纬度
     - destination: 终点，经度,纬度
-    - mode: driving | walking
     """
-    if mode not in {"driving", "walking"}:
-        raise ValueError("mode must be 'driving' or 'walking'")
-
-    planning = json.loads(
-        await route_planning(
-            origin=origin,
-            destination=destination,
-            mode=mode,
-            extensions="base",
+    try:
+        orig_lng, orig_lat = map(float, origin.split(","))
+        dest_lng, dest_lat = map(float, destination.split(","))
+    except ValueError:
+        return json.dumps(
+            {"error": "坐标格式错误，应为 经度,纬度"},
+            ensure_ascii=False,
+            indent=2,
         )
-    )
 
-    distance_m = planning.get("distance_m")
-    duration_s = planning.get("duration_s")
+    R = 6371000
+    phi1, phi2 = math.radians(orig_lat), math.radians(dest_lat)
+    delta_phi = math.radians(dest_lat - orig_lat)
+    delta_lambda = math.radians(dest_lng - orig_lng)
+
+    a = (
+        math.sin(delta_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    distance_m = round(R * c, 2)
+
     out = {
-        "mode": mode,
+        "method": "direct_distance",
         "origin": origin,
         "destination": destination,
         "distance_m": distance_m,
-        "distance_km": round(float(distance_m) / 1000, 3)
-        if distance_m is not None
-        else None,
-        "duration_s": duration_s,
-        "duration_min": round(float(duration_s) / 60, 2)
-        if duration_s is not None
-        else None,
+        "distance_km": round(distance_m / 1000, 3),
     }
     return json.dumps(out, ensure_ascii=False, indent=2)
+
 
 
 def main() -> None:

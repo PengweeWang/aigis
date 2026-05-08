@@ -1,7 +1,7 @@
 <template>
   <div class="chat-panel">
     <div class="chat-header">
-      <h3>GIS 智能体对话</h3>
+      <h3>GIS Chat</h3>
       <el-tooltip content="新建会话" placement="bottom">
         <el-button class="new-session-btn" :size="'small'" circle @click="createNewSession">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
