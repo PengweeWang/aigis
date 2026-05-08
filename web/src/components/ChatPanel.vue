@@ -55,7 +55,8 @@
 
 <script setup>
 import { ref, nextTick, inject } from 'vue'
-import { ElABubble, ElABubbleList, ElASender, ElAThinking, ElAMarkdown } from 'element-ai-vue'
+import { ElABubble, ElABubbleList, ElASender, ElAThinking, ElAMarkdown, ElAButton, ElACard } from 'element-ai-vue'
+import ResponseParser from '../utils/ResponseParser'
 
 const SERVER_URL = ''
 const bubbleListRef = ref(null)
