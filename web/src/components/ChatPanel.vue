@@ -57,7 +57,7 @@
 import { ref, nextTick, inject } from 'vue'
 import { ElABubble, ElABubbleList, ElASender, ElAThinking, ElAMarkdown } from 'element-ai-vue'
 
-const SERVER_URL = 'http://127.0.0.1:4096'
+const SERVER_URL = ''
 const bubbleListRef = ref(null)
 const mapContainer = inject('mapContainer')
 
