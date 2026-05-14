@@ -4,7 +4,16 @@ class AmapClient:
     def __init__(self, key: str):
         self.key = key
         self.base_url = "https://restapi.amap.com/"
-        
+
+    @staticmethod
+    def _parse_location(loc: str):
+        if not loc:
+            return None
+        parts = loc.split(",")
+        if len(parts) != 2:
+            return loc
+        return {"lng": float(parts[0]), "lat": float(parts[1])}
+
     def geocode(self, address: str, city=None):
         """
         获取地址的经纬度信息
@@ -31,7 +40,7 @@ class AmapClient:
         for g in data.get("geocodes", []):
             result["geocodes"].append({
                 "formatted_address": g.get("formatted_address"),
-                "location": g.get("location")
+                "location": self._parse_location(g.get("location"))
             })
         return result
         
@@ -52,13 +61,14 @@ class AmapClient:
         result = {
             "status": data.get("status"),
             "formatted_address": data.get("regeocode", {}).get("formatted_address"),
+            "location": self._parse_location(location)
         }
         return result
     
-    def _parse_route_result(self, data):
+    def _parse_route_result(self, data, origin=None):
         result_paths = []
 
-        for path in data.get("route", {}).get("paths", []):
+        for i, path in enumerate(data.get("route", {}).get("paths", [])):
             instructions = []
             polyline_points = []
 
@@ -67,7 +77,14 @@ class AmapClient:
 
                 polyline = step.get("polyline")
                 if polyline:
-                    polyline_points.extend(polyline.split(";"))
+                    polyline_points.extend(
+                        self._parse_location(p) for p in polyline.split(";") if p
+                    )
+
+            if i == 0 and origin and polyline_points:
+                origin_loc = self._parse_location(origin)
+                if origin_loc and origin_loc != polyline_points[0]:
+                    polyline_points.insert(0, origin_loc)
 
             result_paths.append({
                 "instruction": instructions,
@@ -98,7 +115,7 @@ class AmapClient:
         }
         response = requests.get(url, params=params)
         data = response.json()
-        return self._parse_route_result(data)
+        return self._parse_route_result(data, origin)
     
     def route_planning_walking(self, origin: str, destination: str):
         """
@@ -115,7 +132,7 @@ class AmapClient:
         }
         response = requests.get(url, params=params)
         data = response.json()
-        return self._parse_route_result(data)
+        return self._parse_route_result(data, origin)
     
     def route_planning_bicycling(self, origin: str, destination: str):
         """
@@ -153,7 +170,7 @@ class AmapClient:
             "route": {"paths": paths}
         }
 
-        return self._parse_route_result(norm)
+        return self._parse_route_result(norm, origin)
     
     def route_planing(self, origin: str, destination: str, mode="driving", strategy=0):
         """

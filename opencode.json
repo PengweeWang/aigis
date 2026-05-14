@@ -1,18 +1,14 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "amap_gis": {
+    "gis": {
       "type": "local",
       "command": [
         "python3",
         "-m",
-        "amap_mcp.server"
+        "mcps.server"
       ],
       "enabled": true,
-      "environment": {
-        "AMAP_API_KEY": "{env:AMAP_API_KEY}",
-        "AMAP_DOTENV_PATH": "{workspaceRoot}/.env"
-      },
       "timeout": 10000
     }
   },
@@ -20,7 +16,7 @@
     "build": {
       "mode": "primary",
       "tools": {
-        "amap_gis_*": true,
+        "gis_*": true,
         "write": true,
         "edit": true,
         "bash": true
@@ -40,7 +36,7 @@
         "geocode-candidates-check": true
       },
       "tools": {
-        "amap_gis_*": false,
+        "gis_*": false,
         "webfetch": false,
         "bash": false,
         "write": false,

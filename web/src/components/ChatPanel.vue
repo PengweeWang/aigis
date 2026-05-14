@@ -1,5 +1,6 @@
 <template>
-  <div class="chat-panel">
+  <div class="chat-panel" :style="{ width: panelWidth + 'px' }">
+    <div class="resize-handle" @mousedown="startResize"></div>
     <div class="chat-header">
       <h3>GIS Chat</h3>
       <el-tooltip content="新建会话" placement="bottom">
@@ -54,18 +55,39 @@
 </template>
 
 <script setup>
-import { ref, nextTick, inject } from 'vue'
+import { ref, nextTick, inject, onUnmounted } from 'vue'
 import { ElABubble, ElABubbleList, ElASender, ElAThinking, ElAMarkdown } from 'element-ai-vue'
 
 const SERVER_URL = 'http://127.0.0.1:4096'
+const DATA_SERVER = 'http://127.0.0.1:8000'
 const bubbleListRef = ref(null)
 const mapContainer = inject('mapContainer')
+
+const panelWidth = ref(450)
+const resizing = ref(false)
 
 const messages = ref([])
 const inputText = ref('')
 const currentSessionId = ref(null)
 const modelOptions = ref([])
 const selectedModel = ref('')
+
+function startResize(e) {
+  resizing.value = true
+  const startX = e.clientX
+  const startW = panelWidth.value
+  function onMove(ev) {
+    panelWidth.value = Math.max(280, Math.min(800, startW + ev.clientX - startX))
+  }
+  function onUp() {
+    resizing.value = false
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+  e.preventDefault()
+}
 
 async function checkServerHealth() {
   try {
@@ -171,7 +193,116 @@ function scrollToBottom() {
   })
 }
 
+let ws = null
+let wsReconnectTimer = null
+
+function connectWs() {
+  if (ws && ws.readyState === WebSocket.OPEN) return
+  ws = new WebSocket(`ws://127.0.0.1:8000/ws/data`)
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data)
+      if (data.type) renderData(data)
+    } catch { /* ignore */ }
+  }
+  ws.onclose = () => {
+    wsReconnectTimer = setTimeout(connectWs, 1000)
+  }
+  ws.onerror = () => ws?.close()
+}
+
+function disconnectWs() {
+  clearTimeout(wsReconnectTimer)
+  if (ws) {
+    ws.onclose = null
+    ws.onmessage = null
+    ws.onerror = null
+    ws.close()
+    ws = null
+  }
+}
+
+function renderData(data) {
+  if (!data || !data.type || !data.data || data.data.length === 0) return
+
+  if (data.type === 'points') {
+    mapContainer.clearMarkers()
+    data.data.forEach(item => {
+      const loc = item.location
+      if (loc && loc.lng != null && loc.lat != null) {
+        const title = item.formatted_address || item.address || ''
+        mapContainer.addMarker([loc.lng, loc.lat], {
+          title,
+          label: { content: title || '点位', direction: 'top' },
+        })
+      }
+    })
+    const first = data.data[0]?.location
+    if (first) mapContainer.setCenter([first.lng, first.lat], 14)
+  } else if (data.type === 'polyline') {
+    mapContainer.clearMarkers()
+    mapContainer.clearPolylines()
+    data.data.forEach((item, index) => {
+      if (index === 0 && item.origin && item.destination) {
+        if (item.origin.lng != null && item.origin.lat != null) {
+          mapContainer.addMarker([item.origin.lng, item.origin.lat], {
+            title: item.origin.address || '起点',
+            label: { content: item.origin.address || '起点', direction: 'top' },
+          })
+        }
+        if (item.destination.lng != null && item.destination.lat != null) {
+          mapContainer.addMarker([item.destination.lng, item.destination.lat], {
+            title: item.destination.address || '终点',
+            label: { content: item.destination.address || '终点', direction: 'top' },
+          })
+        }
+        return
+      }
+      const coords = (item.polyline || []).map(p => [p.lng, p.lat])
+      if (coords.length > 0) {
+        mapContainer.addPolyline(coords, { strokeColor: '#AA00FF', strokeWeight: 5 })
+      }
+    })
+    const meta = data.data[0]
+    if (meta?.origin && meta?.destination) {
+      const cx = (meta.origin.lng + meta.destination.lng) / 2
+      const cy = (meta.origin.lat + meta.destination.lat) / 2
+      mapContainer.setCenter([cx, cy], 12)
+    }
+  } else if (data.type === 'distence') {
+    mapContainer.clearMarkers()
+    mapContainer.clearPolylines()
+    data.data.forEach(item => {
+      if (item.origin) {
+        mapContainer.addMarker([item.origin.lng, item.origin.lat], {
+          title: item.origin.address || '起点',
+          label: { content: item.origin.address || '起点', direction: 'top' },
+        })
+      }
+      if (item.destination) {
+        mapContainer.addMarker([item.destination.lng, item.destination.lat], {
+          title: item.destination.address || '终点',
+          label: { content: item.destination.address || '终点', direction: 'top' },
+        })
+      }
+      if (item.origin && item.destination) {
+        mapContainer.addPolyline(
+          [[item.origin.lng, item.origin.lat], [item.destination.lng, item.destination.lat]],
+          { strokeColor: '#FF6B6B', strokeWeight: 3, strokeStyle: 'dashed' },
+        )
+      }
+    })
+    const item = data.data[0]
+    if (item?.origin && item?.destination) {
+      const cx = (item.origin.lng + item.destination.lng) / 2
+      const cy = (item.origin.lat + item.destination.lat) / 2
+      mapContainer.setCenter([cx, cy], 12)
+    }
+  }
+}
+
 async function handleSend(text) {
+
   if (!currentSessionId.value) {
     const created = await createSession()
     if (!created) return
@@ -272,6 +403,7 @@ function testMapFunctions() {
 }
 
 async function init() {
+  connectWs()
   const connected = await checkServerHealth()
   if (connected) {
     await fetchModels()
@@ -281,6 +413,8 @@ async function init() {
 }
 
 init()
+
+onUnmounted(() => disconnectWs())
 </script>
 
 <style scoped>
@@ -322,6 +456,7 @@ init()
 
 :deep(.el-ai-bubble) {
   margin-bottom: 12px;
+  font-size: 13px;
 }
 
 :deep(.el-ai-bubble:last-child) {
@@ -379,6 +514,16 @@ init()
 .model-select:focus {
   border-color: #909399;
   box-shadow: 0 0 0 2px rgba(144, 147, 153, 0.15);
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 20;
 }
 
 .new-session-btn {
