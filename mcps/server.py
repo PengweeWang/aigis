@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-from api import AmapClient, direction_distence as calc_distance
+from api import direction_distence as calc_distance
+# from api import DbrgClient as Client
+from api import AmapClient as Client
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
@@ -13,7 +15,7 @@ if not key:
 
 DATA_SERVER = os.getenv("DATA_SERVER_URL", "http://localhost:8000")
 
-client = AmapClient(key=key)
+client = Client(key=key)
 
 mcp = FastMCP("gis")
 
