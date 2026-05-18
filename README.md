@@ -142,10 +142,11 @@ cd web && npm run dev
 | `VITE_AMAP_SECURITY_CODE` | 高德地图安全密钥 |
 | `DATA_SERVER_URL` | 数据服务器地址 (默认 http://localhost:8000) |
 
-## MCP、API返回格式参照
+## MCP、API、前端用户标注格式参照
 
 [`api/README.md`](api/README.md)。 
 [`server/README.md`](server/README.md)
+[`web/README.md`](web/README.md)
 
 
 ## 许可

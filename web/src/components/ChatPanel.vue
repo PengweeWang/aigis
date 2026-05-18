@@ -3,13 +3,26 @@
     <div class="resize-handle" @mousedown="startResize"></div>
     <div class="chat-header">
       <h3>GIS Chat</h3>
-      <el-tooltip content="新建会话" placement="bottom">
-        <el-button class="new-session-btn" :size="'small'" circle @click="createNewSession">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </el-button>
-      </el-tooltip>
+      <div class="header-actions">
+        <div class="add-point-wrapper">
+          <el-tooltip :content="pointAddMode ? '关闭标注模式 (点击标记删除)' : '开启标注模式'" placement="bottom">
+            <el-button class="add-point-btn" :class="{ active: pointAddMode }" :size="'small'" circle @click="togglePointAddMode">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" :stroke="pointAddMode ? '#fff' : 'currentColor'" stroke-width="2">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                <circle cx="12" cy="9" r="2.5"/>
+              </svg>
+            </el-button>
+          </el-tooltip>
+          <span v-if="userPointsCount > 0" class="point-badge">{{ userPointsCount }}</span>
+        </div>
+        <el-tooltip content="新建会话" placement="bottom">
+          <el-button class="new-session-btn" :size="'small'" circle @click="createNewSession">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </el-button>
+        </el-tooltip>
+      </div>
     </div>
 
     <ElABubbleList ref="bubbleListRef" class="chat-messages">
@@ -21,7 +34,27 @@
           :typing="msg.role === 'assistant' && msg.typing"
           :loading="msg.loading"
           :is-markdown="msg.role === 'assistant'"
-        />
+        >
+          <template v-if="msg.role === 'user' && msg.points" #default>
+            <div class="points-card">
+              <div class="points-card-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1890ff" stroke-width="2">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                  <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+                <span>地图标注点</span>
+                <span class="points-count">{{ msg.points.length }}</span>
+              </div>
+              <div class="points-card-body">
+                <div class="point-item" v-for="p in msg.points" :key="p.label">
+                  <span class="point-label">{{ p.label }}</span>
+                  <span class="point-coords">{{ p.lng.toFixed(6) }}, {{ p.lat.toFixed(6) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="user-text">{{ msg.userText }}</div>
+          </template>
+        </ElABubble>
         <ElAThinking
           v-else-if="msg.type === 'reasoning'"
           v-model="msg.expanded"
@@ -71,6 +104,8 @@ const inputText = ref('')
 const currentSessionId = ref(null)
 const modelOptions = ref([])
 const selectedModel = ref('')
+const pointAddMode = ref(false)
+const userPointsCount = ref(0)
 
 function startResize(e) {
   resizing.value = true
@@ -123,6 +158,10 @@ async function createSession() {
 
 async function createNewSession() {
   messages.value = []
+  mapContainer?.clearMarkers?.()
+  mapContainer?.clearPolylines?.()
+  mapContainer?.clearUserPoints?.()
+  userPointsCount.value = 0
   await createSession()
   addSystemMessage('已创建新会话')
 }
@@ -185,6 +224,20 @@ function handleModelChange() {
   // model selection changed
 }
 
+function togglePointAddMode() {
+  pointAddMode.value = !pointAddMode.value
+  if (pointAddMode.value) {
+    mapContainer?.enableAddMode?.()
+  } else {
+    mapContainer?.disableAddMode?.()
+  }
+}
+
+function updateUserPointsCount() {
+  const points = mapContainer?.getUserPoints?.() || []
+  userPointsCount.value = points.length
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (bubbleListRef.value?.scrollToBottom) {
@@ -226,7 +279,6 @@ function renderData(data) {
   if (!data || !data.type || !data.data || data.data.length === 0) return
 
   if (data.type === 'points') {
-    mapContainer.clearMarkers()
     data.data.forEach(item => {
       const loc = item.location
       if (loc && loc.lng != null && loc.lat != null) {
@@ -240,8 +292,6 @@ function renderData(data) {
     const first = data.data[0]?.location
     if (first) mapContainer.setCenter([first.lng, first.lat], 14)
   } else if (data.type === 'polyline') {
-    mapContainer.clearMarkers()
-    mapContainer.clearPolylines()
     data.data.forEach((item, index) => {
       if (index === 0 && item.origin && item.destination) {
         if (item.origin.lng != null && item.origin.lat != null) {
@@ -270,8 +320,6 @@ function renderData(data) {
       mapContainer.setCenter([cx, cy], 12)
     }
   } else if (data.type === 'distence') {
-    mapContainer.clearMarkers()
-    mapContainer.clearPolylines()
     data.data.forEach(item => {
       if (item.origin) {
         mapContainer.addMarker([item.origin.lng, item.origin.lat], {
@@ -302,13 +350,27 @@ function renderData(data) {
 }
 
 async function handleSend(text) {
+  mapContainer?.clearMarkers?.()
+  mapContainer?.clearPolylines?.()
+  const points = mapContainer?.getUserPoints?.() || []
+  userPointsCount.value = points.length
+  let fullText = text
+  if (points.length > 0) {
+    const pointsDesc = points.map(p =>
+      `${p.label} (${p.lng}, ${p.lat})`
+    ).join('\n')
+    fullText = `[地图标注点]\n${pointsDesc}\n\n[用户问题]\n${text}`
+  }
 
   if (!currentSessionId.value) {
     const created = await createSession()
     if (!created) return
   }
 
-  addMessage('user', text)
+  addMessage('user', fullText, {
+    points: points.length > 0 ? points : undefined,
+    userText: text,
+  })
   inputText.value = ''
 
   const loadingMsg = {
@@ -332,7 +394,7 @@ async function handleSend(text) {
           const m = modelOptions.value.find(o => o.value === selectedModel.value)
           return m ? { providerID: m.providerID, modelID: m.value } : undefined
         })() : undefined,
-        parts: [{ type: 'text', text }]
+        parts: [{ type: 'text', text: fullText }]
       })
     })
 
@@ -352,6 +414,7 @@ async function handleSend(text) {
 }
 
 function renderResponseParts(parts) {
+  updateUserPointsCount()
   let reasoningText = ''
   let answerText = ''
 
@@ -437,13 +500,13 @@ onUnmounted(() => disconnectWs())
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 12px 16px;
   border-bottom: 1px solid #eee;
   background: #f8f9fa;
 }
 
 .chat-header h3 {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: #333;
 }
@@ -451,24 +514,48 @@ onUnmounted(() => disconnectWs())
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 12px;
 }
 
 :deep(.el-ai-bubble) {
-  margin-bottom: 12px;
-  font-size: 13px;
+  margin-bottom: 8px;
+  font-size: 12px;
 }
 
 :deep(.el-ai-bubble:last-child) {
   margin-bottom: 0;
 }
 
+:deep(.el-ai-bubble .el-ai-markdown) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+:deep(.el-ai-bubble .el-ai-markdown p),
+:deep(.el-ai-bubble .el-ai-markdown li) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+:deep(.el-ai-bubble .el-ai-markdown pre) {
+  font-size: 11px;
+}
+
+:deep(.el-ai-bubble .el-ai-markdown code) {
+  font-size: 11px;
+}
+
+:deep(.el-ai-bubble .el-ai-markdown h1) { font-size: 16px; }
+:deep(.el-ai-bubble .el-ai-markdown h2) { font-size: 14px; }
+:deep(.el-ai-bubble .el-ai-markdown h3) { font-size: 13px; }
+:deep(.el-ai-bubble .el-ai-markdown h4) { font-size: 12px; }
+
 :deep(.el-ai-thinking) {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .chat-input-area {
-  padding: 8px 16px 16px;
+  padding: 6px 12px 12px;
   border-top: 1px solid #eee;
   background: #f8f9fa;
 }
@@ -547,5 +634,134 @@ onUnmounted(() => disconnectWs())
 .new-session-btn:active {
   transform: translateY(0);
   box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.add-point-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.add-point-btn {
+  background: linear-gradient(135deg, #e8e8e8, #d0d0d0) !important;
+  color: #555 !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  line-height: 32px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.add-point-btn.active {
+  background: linear-gradient(135deg, #1890ff, #096dd9) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.4);
+}
+
+.point-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #f5222d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.points-card {
+  background: #f0f5ff;
+  border: 1px solid #d6e4ff;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.points-card-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #e6f0ff;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a5cc8;
+  border-bottom: 1px solid #d6e4ff;
+}
+
+.points-count {
+  margin-left: auto;
+  background: #1890ff;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  padding: 0 4px;
+}
+
+.points-card-body {
+  padding: 4px 8px;
+}
+
+.point-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.point-item + .point-item {
+  border-top: 1px solid #e6f0ff;
+}
+
+.point-label {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1890ff;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.point-coords {
+  color: #666;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 10px;
+}
+
+.user-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #333;
+  word-break: break-word;
 }
 </style>

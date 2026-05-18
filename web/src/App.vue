@@ -18,6 +18,12 @@ provide('mapContainer', {
   setCenter: (...args) => mapRef.value?.setCenter(...args),
   clearMarkers: (...args) => mapRef.value?.clearMarkers(...args),
   clearPolylines: (...args) => mapRef.value?.clearPolylines(...args),
+  enableAddMode: (...args) => mapRef.value?.enableAddMode(...args),
+  disableAddMode: (...args) => mapRef.value?.disableAddMode(...args),
+  toggleAddMode: (...args) => mapRef.value?.toggleAddMode(...args),
+  getAddModeEnabled: (...args) => mapRef.value?.getAddModeEnabled(...args),
+  getUserPoints: (...args) => mapRef.value?.getUserPoints(...args),
+  clearUserPoints: (...args) => mapRef.value?.clearUserPoints(...args),
 })
 </script>
 
