@@ -107,6 +107,15 @@ const selectedModel = ref('')
 const pointAddMode = ref(false)
 const userPointsCount = ref(0)
 
+// SSE streaming state
+let eventSource = null
+let eventReconnectTimer = null
+const streamState = ref({
+  assistantMessageId: null,
+  partTexts: {},
+  isStreaming: false,
+})
+
 function startResize(e) {
   resizing.value = true
   const startX = e.clientX
@@ -224,6 +233,116 @@ function handleModelChange() {
   // model selection changed
 }
 
+// SSE event stream for streaming AI responses
+function connectEventStream() {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
+  clearTimeout(eventReconnectTimer)
+
+  eventSource = new EventSource('/global/event')
+
+  eventSource.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data)
+      handleSseEvent(msg)
+    } catch { /* ignore */ }
+  }
+
+  eventSource.onerror = () => {
+    eventSource?.close()
+    eventSource = null
+    eventReconnectTimer = setTimeout(connectEventStream, 3000)
+  }
+}
+
+function handleSseEvent(msg) {
+  const payload = msg.payload
+  if (!payload?.properties) return
+
+  const props = payload.properties
+  if (props.sessionID !== currentSessionId.value) return
+
+  switch (payload.type) {
+    case 'message.updated':
+      if (props.info?.role === 'assistant') {
+        // Remove loading placeholder, start streaming
+        messages.value = messages.value.filter(m => !m.loading)
+        streamState.value = {
+          assistantMessageId: props.info.id,
+          partTexts: {},
+          isStreaming: true,
+        }
+        // Check if message already exists (e.g., from SSE reconnect)
+        if (!messages.value.find(m => m.id === props.info.id)) {
+          messages.value.push({
+            id: props.info.id,
+            type: 'message',
+            role: 'assistant',
+            content: '',
+            typing: true,
+            loading: false,
+          })
+        }
+        scrollToBottom()
+      }
+      break
+
+    case 'message.part.updated': {
+      const part = props.part
+      if (!part) break
+
+      if (part.type === 'reasoning' && part.text) {
+        addReasoningMessage(part.text)
+      } else if (part.type === 'text' && part.messageID === streamState.value.assistantMessageId) {
+        if (part.text) {
+          streamState.value.partTexts[part.id] = part.text
+          updateStreamingContent()
+        }
+      } else if (part.type === 'step-finish') {
+        finalizeStreamingMessage(part.messageID)
+      }
+      break
+    }
+
+    case 'message.part.delta': {
+      const { messageID, partID, delta } = props
+      if (messageID === streamState.value.assistantMessageId && delta) {
+        streamState.value.partTexts[partID] = (streamState.value.partTexts[partID] || '') + delta
+        updateStreamingContent()
+      }
+      break
+    }
+  }
+}
+
+function updateStreamingContent() {
+  const text = Object.values(streamState.value.partTexts).join('')
+  const msg = messages.value.find(m => m.id === streamState.value.assistantMessageId)
+  if (msg) {
+    msg.content = text
+    scrollToBottom()
+  }
+}
+
+function finalizeStreamingMessage(messageID) {
+  const targetId = messageID || streamState.value.assistantMessageId
+  const msg = messages.value.find(m => m.id === targetId)
+  if (msg) {
+    msg.typing = false
+  } else if (targetId && streamState.value.isStreaming) {
+    // No streaming message was created (e.g. no text parts), remove loading
+    messages.value = messages.value.filter(m => !m.loading)
+    if (!messages.value.some(m => m.role === 'assistant' && !m.loading)) {
+      addMessage('assistant', '回答内容为空')
+    }
+  }
+  streamState.value.isStreaming = false
+  streamState.value.assistantMessageId = null
+  streamState.value.partTexts = {}
+}
+
 function togglePointAddMode() {
   pointAddMode.value = !pointAddMode.value
   if (pointAddMode.value) {
@@ -278,8 +397,10 @@ function disconnectWs() {
 function renderData(data) {
   if (!data || !data.type || !data.data || data.data.length === 0) return
 
-  if (data.type === 'points') {
-    data.data.forEach(item => {
+  // Use requestAnimationFrame to avoid blocking the main thread
+  requestAnimationFrame(() => {
+    if (data.type === 'points') {
+      data.data.forEach(item => {
       const loc = item.location
       if (loc && loc.lng != null && loc.lat != null) {
         const title = item.formatted_address || item.address || ''
@@ -347,6 +468,7 @@ function renderData(data) {
       mapContainer.setCenter([cx, cy], 12)
     }
   }
+  })
 }
 
 async function handleSend(text) {
@@ -373,6 +495,7 @@ async function handleSend(text) {
   })
   inputText.value = ''
 
+  // Add loading placeholder (will be replaced by SSE streaming)
   const loadingMsg = {
     id: Date.now().toString() + '-loading',
     type: 'message',
@@ -384,33 +507,35 @@ async function handleSend(text) {
   messages.value.push(loadingMsg)
   scrollToBottom()
 
-  try {
-    const response = await fetch(`${SERVER_URL}/session/${currentSessionId.value}/message`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agent: 'gis-orchestrator',
-        model: selectedModel.value ? (() => {
-          const m = modelOptions.value.find(o => o.value === selectedModel.value)
-          return m ? { providerID: m.providerID, modelID: m.value } : undefined
-        })() : undefined,
-        parts: [{ type: 'text', text: fullText }]
-      })
+  // Fire POST — SSE handles streaming UI updates
+  fetch(`${SERVER_URL}/session/${currentSessionId.value}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      agent: 'gis-orchestrator',
+      model: selectedModel.value ? (() => {
+        const m = modelOptions.value.find(o => o.value === selectedModel.value)
+        return m ? { providerID: m.providerID, modelID: m.value } : undefined
+      })() : undefined,
+      parts: [{ type: 'text', text: fullText }]
     })
-
-    messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
-
-    if (response.ok) {
-      const result = await response.json()
-      renderResponseParts(result.parts)
-    } else {
-      const errorText = await response.text()
-      addMessage('assistant', `请求失败: ${errorText}`)
+  }).then(async (response) => {
+    if (!response.ok) {
+      // SSE didn't stream anything, clean up and show error
+      const stillLoading = messages.value.some(m => m.id === loadingMsg.id)
+      if (stillLoading) {
+        messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
+        const errorText = await response.text()
+        addMessage('assistant', `请求失败: ${errorText}`)
+      }
     }
-  } catch (error) {
-    messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
-    addMessage('assistant', `请求失败: ${error.message}`)
-  }
+  }).catch((error) => {
+    const stillLoading = messages.value.some(m => m.id === loadingMsg.id)
+    if (stillLoading) {
+      messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
+      addMessage('assistant', `请求失败: ${error.message}`)
+    }
+  })
 }
 
 function renderResponseParts(parts) {
@@ -467,6 +592,7 @@ function testMapFunctions() {
 
 async function init() {
   connectWs()
+  connectEventStream()
   const connected = await checkServerHealth()
   if (connected) {
     await fetchModels()
@@ -477,7 +603,14 @@ async function init() {
 
 init()
 
-onUnmounted(() => disconnectWs())
+onUnmounted(() => {
+  disconnectWs()
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
+  clearTimeout(eventReconnectTimer)
+})
 </script>
 
 <style scoped>
