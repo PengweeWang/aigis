@@ -528,13 +528,7 @@ function handleGlobalEvent(event) {
       else if (s === 'idle') {
         sessionBusy.value = false
         streamingPartId.value = null
-        // Finalize SSE text — session is done, no more deltas will arrive
-        const sseText = messages.value.find(m => m._sse && m.type === 'message' && m.role === 'assistant')
-        if (sseText) {
-          sseText.typing = false
-          sseText._finalized = true
-        }
-        // Remove loading message if SSE never started (no content from server)
+        // Remove loading message if SSE never started
         const loading = messages.value.find(m => m.loading && m.role === 'assistant')
         if (loading) messages.value = messages.value.filter(m => m.id !== loading.id)
       }
@@ -563,8 +557,6 @@ function handleStreamDelta(props) {
   const { partID, delta, messageID } = props
   // Skip deltas belonging to user messages (echoed input)
   if (messageID && currentUserMessageId && messageID === currentUserMessageId) return
-  // Skip if already finalized by POST response
-  if (messages.value.find(m => m._finalized && m.type === 'message' && m.role === 'assistant')) return
   deltaAccum[partID] = (deltaAccum[partID] || '') + delta
   const fullText = deltaAccum[partID]
 
@@ -610,9 +602,6 @@ function handlePartUpdated(part) {
 
   switch (part.type) {
     case 'text': {
-      // Skip if already finalized by POST response
-      const finalized = messages.value.find(m => m._finalized && m.type === 'message' && m.role === 'assistant')
-      if (finalized) break
       const existing = messages.value.find(m => m._partId === part.id && m._sse && m.type === 'message' && m.role === 'assistant')
       if (existing) {
         existing.content = text
@@ -790,13 +779,13 @@ async function handleSend() {
 }
 
 function applyFinalResponse(rawParts, userText) {
-  let answerText = ''
-
+  // SSE already streamed all content — POST response only updates tool status & cleans up
   for (const part of rawParts) {
     if (part.type === 'text') {
-      if (part.text === userText) continue
-      answerText += part.text
-    } else if (part.type === 'tool') {
+      // Text is already handled by SSE — skip
+      continue
+    }
+    if (part.type === 'tool') {
       const toolName = part.tool || 'unknown'
       const status = part.state?.status || 'completed'
       const input = part.state?.input
@@ -811,17 +800,6 @@ function applyFinalResponse(rawParts, userText) {
         const toolMsg = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === subSessionId)
         if (toolMsg) toolMsg.subStatus = status === 'completed' ? 'completed' : 'running'
       }
-    }
-  }
-
-  if (answerText) {
-    const existing = messages.value.find(m => m._sse && m.type === 'message' && m.role === 'assistant')
-    if (existing) {
-      existing.content = answerText
-      existing.typing = false
-      existing._finalized = true
-    } else {
-      addMessage('assistant', answerText)
     }
   }
 
