@@ -177,6 +177,9 @@
         </button>
       </div>
     </div>
+
+    <!-- scroll anchor -->
+    <div ref="bottomAnchorRef" class="scroll-anchor"></div>
   </div>
 </template>
 
@@ -337,7 +340,17 @@ function startResize(e) {
 function scrollToBottom() {
   nextTick(() => {
     const el = messagesRef.value
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
+  })
+}
+
+function scrollToTop() {
+  nextTick(() => {
+    const el = messagesRef.value
+    if (el) el.scrollTop = 0
   })
 }
 
@@ -927,7 +940,7 @@ onUnmounted(() => {
 /* === Messages === */
 .chat-messages {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   padding: 16px;
   display: flex;
   flex-direction: column;
