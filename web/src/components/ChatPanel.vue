@@ -82,11 +82,17 @@
             </svg>
             <span v-if="msg.agent" class="tool-agent-badge" :style="{ '--color': agentColor(msg.agent) }">{{ msg.agent }}</span>
             <span class="tool-call-name">{{ msg.toolName }}</span>
-            <span class="tool-call-status" :class="msg.status">
-              <span class="status-dot" :class="msg.status"></span>
-              {{ statusLabel(msg.status) }}
+            <template v-if="!msg.subSessionId">
+              <span class="tool-call-status" :class="msg.status">
+                <span class="status-dot" :class="msg.status"></span>
+                {{ statusLabel(msg.status) }}
+              </span>
+            </template>
+            <span v-if="msg.subSessionId" class="sub-agent-indicator" :class="{ running: msg.subStatus === 'running' }">
+              <span v-if="msg.subStatus === 'running'" class="sub-agent-spinner"></span>
+              <span class="sub-agent-text">{{ msg._subStatusText || '等待中...' }}</span>
             </span>
-            <button v-if="msg.input !== undefined || msg.output !== undefined" class="tool-toggle" @click="msg._expanded = !msg._expanded">
+            <button v-if="msg.input !== undefined || msg._subTools?.length || msg._subReasoning || msg._subText" class="tool-toggle" @click="msg._expanded = !msg._expanded">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 :style="{ transform: msg._expanded ? 'rotate(180deg)' : '' }">
                 <path d="M6 9l6 6 6-6"/>
@@ -99,9 +105,47 @@
               <div class="tool-section-label">输入</div>
               <pre class="tool-code">{{ formatToolInput(msg.input) }}</pre>
             </div>
-            <div v-if="msg.output !== undefined" class="tool-section">
+            <div v-if="msg.output !== undefined && !msg._subTools?.length" class="tool-section">
               <div class="tool-section-label">输出</div>
               <pre class="tool-code">{{ truncateOutput(msg.output) }}</pre>
+            </div>
+            <!-- Sub-agent tools nested inside parent card -->
+            <div v-if="msg._subTools?.length" class="sub-tools">
+              <div class="tool-section-label">子智能体调用</div>
+              <div v-for="st in msg._subTools" :key="st.id" class="sub-tool-item" :class="st.status">
+                <div class="sub-tool-header">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                  </svg>
+                  <span class="sub-tool-name">{{ st.tool }}</span>
+                  <span class="tool-call-status" :class="st.status">
+                    <span class="status-dot" :class="st.status"></span>
+                    {{ statusLabel(st.status) }}
+                  </span>
+                  <button v-if="st.input !== undefined" class="tool-toggle" @click="st._expanded = !st._expanded">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      :style="{ transform: st._expanded ? 'rotate(180deg)' : '' }">
+                      <path d="M6 9l6 6 6-6"/>
+                    </svg>
+                    {{ st._expanded ? '收起' : '详情' }}
+                  </button>
+                </div>
+                <div v-if="st._expanded" class="sub-tool-body">
+                  <div v-if="st.input !== undefined" class="tool-section">
+                    <div class="tool-section-label">输入</div>
+                    <pre class="tool-code">{{ formatToolInput(st.input) }}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Sub-agent reasoning & response -->
+            <div v-if="msg._subReasoning" class="sub-agent-response">
+              <div class="tool-section-label">智能体思考</div>
+              <div class="sub-reasoning">{{ msg._subReasoning }}</div>
+            </div>
+            <div v-if="msg._subText" class="sub-agent-response">
+              <div class="tool-section-label">智能体回复</div>
+              <div class="sub-text md-content" v-html="renderMarkdown(msg._subText)"></div>
             </div>
           </div>
           <div v-if="msg.subSessionId" class="sub-agent-bar">
@@ -198,6 +242,8 @@ const resizing = ref(false)
 const messages = ref([])
 const inputText = ref('')
 const currentSessionId = ref(null)
+const subSessionIds = new Set()
+const subAgentNames = {}  // sessionId -> agent name
 const modelOptions = ref([])
 const selectedModel = ref('')
 const pointAddMode = ref(false)
@@ -220,8 +266,18 @@ const TOOL_STATUS_LABELS = {
   cancelled: '已取消',
 }
 
+// Track tool source from /command endpoint
+const commandSourceMap = {}  // toolName -> 'command' | 'mcp' | 'skill'
+
 function statusLabel(s) {
   return TOOL_STATUS_LABELS[s] || s || '等待中'
+}
+
+function countLabel(toolCount, skillCount) {
+  const parts = []
+  if (toolCount) parts.push(`${toolCount} tool${toolCount > 1 ? 's' : ''}`)
+  if (skillCount) parts.push(`${skillCount} skill${skillCount > 1 ? 's' : ''}`)
+  return parts.join(' + ') || '0 tools'
 }
 
 function uid() {
@@ -392,6 +448,7 @@ async function createNewSession() {
   userPointsCount.value = 0
   sessionBusy.value = false
   streamingPartId.value = null
+  subSessionIds.clear()
   await createSession()
   addSystemMessage('已创建新会话')
 }
@@ -422,7 +479,12 @@ function addToolCallMsg(toolName, status, input, output, subSessionId, agentName
     existing.status = status
     if (output !== undefined) existing.output = output
     if (subSessionId && !existing.subSessionId) existing.subSessionId = subSessionId
-    return existing
+      if (status === 'completed' && existing.subSessionId) {
+        const tc = existing._toolCount || 0
+        const sc = existing._skillCount || 0
+        existing._subStatusText = `已完成 (${countLabel(tc, sc)})`
+      }
+      return existing
   }
   const msg = {
     id: uid(),
@@ -431,10 +493,10 @@ function addToolCallMsg(toolName, status, input, output, subSessionId, agentName
     status,
     input,
     output,
-    _expanded: false,
     subSessionId,
     subStatus: subSessionId ? 'running' : undefined,
     agent: agentName,
+    _expanded: false,
   }
   messages.value.push(msg)
   scrollToBottom()
@@ -465,6 +527,17 @@ async function fetchModels() {
     if (options.length === 0) return
     modelOptions.value = options
     selectedModel.value = options.find(o => o.value === 'minimax-m2.5-free')?.value || options[0].value
+  } catch { /* ignore */ }
+}
+
+async function fetchCommands() {
+  try {
+    const r = await fetch(`${SERVER_URL}/command`)
+    if (!r.ok) return
+    const list = await r.json()
+    for (const cmd of list) {
+      if (cmd.source) commandSourceMap[cmd.name.toLowerCase()] = cmd.source
+    }
   } catch { /* ignore */ }
 }
 
@@ -499,6 +572,7 @@ let eventReconnectTimer = null
 
 // Accumulate streaming text deltas by partID
 const deltaAccum = {}
+const partTypeByID = {}
 // Track current user message ID to filter out echoed user-message parts from SSE
 let currentUserMessageId = null
 
@@ -532,7 +606,9 @@ function handleGlobalEvent(event) {
   if (!payload) return
 
   const props = payload.properties || {}
-  if (props.sessionID !== currentSessionId.value) return
+  if (!currentSessionId.value) return
+  // Accept events from main session or tracked sub-sessions
+  if (props.sessionID !== currentSessionId.value && !subSessionIds.has(props.sessionID)) return
 
   switch (payload.type) {
     case 'session.status': {
@@ -567,11 +643,34 @@ function handleGlobalEvent(event) {
 }
 
 function handleStreamDelta(props) {
-  const { partID, delta, messageID } = props
+  const { partID, delta, messageID, sessionID } = props
   // Skip deltas belonging to user messages (echoed input)
   if (messageID && currentUserMessageId && messageID === currentUserMessageId) return
+  // Skip if already finalized by POST response
+  if (messages.value.find(m => m._finalized && m.type === 'message' && m.role === 'assistant')) return
+
+  // Redirect sub-session deltas to parent task card
+  if (sessionID && subSessionIds.has(sessionID)) {
+    const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === sessionID)
+    if (!parent) return
+    deltaAccum[partID] = (deltaAccum[partID] || '') + delta
+    const fullText = deltaAccum[partID]
+    const ptype = partTypeByID[partID]
+    if (ptype === 'reasoning') {
+      parent._subReasoning = fullText
+    } else {
+      parent._subText = fullText
+    }
+    return
+  }
+
   deltaAccum[partID] = (deltaAccum[partID] || '') + delta
   const fullText = deltaAccum[partID]
+
+  // Redirect sub-session deltas to parent task card
+  const partType = partTypeByID[partID]
+  if (partType === 'reasoning' || partType === 'text') {
+  }
 
   if (!streamingPartId.value || streamingPartId.value !== partID) {
     streamingPartId.value = partID
@@ -611,7 +710,28 @@ function handlePartUpdated(part) {
   // Skip step-start/step-finish/snapshot/patch internal parts
   if (['step-start', 'step-finish', 'snapshot', 'patch'].includes(part.type)) return
 
+  // Track part type for delta routing
+  partTypeByID[part.id] = part.type
+
   const text = part.text || ''
+  const isSubSession = part.sessionID && subSessionIds.has(part.sessionID)
+
+  // Sub-session text/reasoning: nest inside parent task card
+  if (isSubSession && (part.type === 'text' || part.type === 'reasoning')) {
+    const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === part.sessionID)
+    if (parent && text) {
+      if (part.type === 'reasoning') {
+        parent._subReasoning = (parent._subReasoning || '') + text
+        parent._subStatusText = '思考中...'
+      } else {
+        parent._subText = (parent._subText || '') + text
+        if (text && parent._subStatusText !== '已完成') {
+          parent._subStatusText = '回复中...'
+        }
+      }
+    }
+    return
+  }
 
   switch (part.type) {
     case 'text': {
@@ -646,12 +766,50 @@ function handlePartUpdated(part) {
       const metadata = state.metadata || {}
       const subSessionId = metadata.sessionId
       const subOutput = metadata.output
-      const agentName = metadata.agent || metadata.name
+      const isSubSession = part.sessionID && subSessionIds.has(part.sessionID)
+      const agentName = isSubSession
+        ? (subAgentNames[part.sessionID] || part.sessionID)
+        : (metadata.agent || metadata.name)
 
-      addToolCallMsg(toolName, status, input, output || subOutput, subSessionId, agentName)
-      if (subSessionId && status === 'completed') {
-        const toolMsg = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === subSessionId)
-        if (toolMsg) toolMsg.subStatus = 'completed'
+      if (isSubSession) {
+        // Sub-agent tool: nest inside parent task card
+        if (status === 'pending') break
+        const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === part.sessionID)
+        if (parent) {
+          parent._subStatusText = `调用工具: ${toolName}`
+          if (!parent._subTools) parent._subTools = []
+          const existing = parent._subTools.find(t => t.tool === toolName && t.status === 'running')
+          if (existing) {
+            existing.status = status
+            if (input !== undefined) existing.input = input
+            if (output !== undefined) existing.output = output
+          } else {
+            const source = commandSourceMap[toolName.toLowerCase()] || 'command'
+            if (source === 'skill') parent._skillCount = (parent._skillCount || 0) + 1
+            else parent._toolCount = (parent._toolCount || 0) + 1
+            parent._subTools.push({
+              id: uid(), tool: toolName, status, input, output,
+              _expanded: false,
+            })
+          }
+          if (status === 'completed' || status === 'failed') {
+            parent.subStatus = status === 'completed' ? 'completed' : 'failed'
+            const allDone = parent._subTools?.every(t => t.status === 'completed' || t.status === 'failed')
+            if (allDone && parent._subText) {
+              parent._subStatusText = `已完成 (${countLabel(parent._toolCount || 0, parent._skillCount || 0)})`
+            }
+          }
+        }
+      } else {
+        addToolCallMsg(toolName, status, input, output || subOutput, subSessionId, agentName, false)
+        if (subSessionId) {
+          subSessionIds.add(subSessionId)
+          if (agentName) subAgentNames[subSessionId] = agentName
+          if (status === 'completed') {
+            const toolMsg = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === subSessionId)
+            if (toolMsg) toolMsg.subStatus = 'completed'
+          }
+        }
       }
       break
     }
@@ -758,6 +916,7 @@ async function handleSend() {
   sessionBusy.value = true
   streamingPartId.value = null
   currentUserMessageId = null
+  subSessionIds.clear()
 
   try {
     const response = await fetch(`${SERVER_URL}/session/${currentSessionId.value}/message`, {
@@ -810,6 +969,8 @@ function applyFinalResponse(rawParts, userText) {
 
       addToolCallMsg(toolName, status, input, output || subOutput, subSessionId, agentName)
       if (subSessionId) {
+        subSessionIds.add(subSessionId)
+        if (agentName) subAgentNames[subSessionId] = agentName
         const toolMsg = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === subSessionId)
         if (toolMsg) toolMsg.subStatus = status === 'completed' ? 'completed' : 'running'
       }
@@ -827,7 +988,7 @@ function init() {
   connectWs()
   connectEventSource()
   checkServerHealth().then(ok => {
-    if (ok) { fetchModels(); createSession() }
+    if (ok) { fetchModels(); fetchCommands(); createSession() }
   })
 }
 
@@ -1350,6 +1511,29 @@ onUnmounted(() => {
 .tool-call-status.running { color: #1890ff; }
 .tool-call-status.cancelled { color: #999; }
 
+.sub-agent-indicator {
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #888;
+  white-space: nowrap;
+}
+.sub-agent-indicator.running {
+  color: #1890ff;
+}
+.sub-agent-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid #1890ff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .status-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
@@ -1361,6 +1545,7 @@ onUnmounted(() => {
 .status-dot.cancelled { background: #d9d9d9; }
 
 .tool-toggle {
+  margin-left: auto;
   background: none;
   border: none;
   cursor: pointer;
@@ -1403,6 +1588,59 @@ onUnmounted(() => {
   line-height: 1.5;
   max-height: 150px;
   overflow-y: auto;
+}
+.sub-tools {
+  margin-top: 10px;
+  border-top: 1px solid #e8e8e8;
+  padding-top: 8px;
+}
+.sub-tool-item {
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: #fafbfc;
+}
+.sub-tool-item.completed { border-left: 2px solid #52c41a; }
+.sub-tool-item.failed { border-left: 2px solid #ff4d4f; }
+.sub-tool-item.running { border-left: 2px solid #1890ff; }
+.sub-tool-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  font-size: 10px;
+  color: #555;
+  background: #f5f7fa;
+}
+.sub-tool-name {
+  font-weight: 600;
+  color: #333;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 10px;
+}
+.sub-tool-body {
+  padding: 6px 8px;
+}
+.sub-agent-response {
+  margin-top: 8px;
+}
+.sub-reasoning {
+  font-size: 11px;
+  color: #666;
+  background: #f5f7fa;
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.sub-text {
+  font-size: 12px;
+  line-height: 1.5;
+  background: #f8faff;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  padding: 8px 10px;
 }
 
 .sub-agent-bar {
