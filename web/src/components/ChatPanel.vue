@@ -376,6 +376,15 @@ function autoResize() {
   }
 }
 
+// SSE streaming state
+let eventSource = null
+let eventReconnectTimer = null
+const streamState = ref({
+  assistantMessageId: null,
+  partTexts: {},
+  isStreaming: false,
+})
+
 function startResize(e) {
   resizing.value = true
   const startX = e.clientX
@@ -884,6 +893,7 @@ async function abortSession() {
     if (m.typing) m.typing = false
     if (m.type === 'tool_call' && m.status === 'running') m.status = 'cancelled'
   }
+  })
 }
 
 async function handleSend() {
