@@ -21,6 +21,14 @@ export default defineConfig({
       '/provider': {
         target: 'http://127.0.0.1:4096',
         changeOrigin: true
+      },
+      '/question': {
+        target: 'http://127.0.0.1:4096',
+        changeOrigin: true
+      },
+      '/permission': {
+        target: 'http://127.0.0.1:4096',
+        changeOrigin: true
       }
     }
   }
