@@ -293,7 +293,8 @@ function countLabel(toolCount, skillCount) {
             }
           }
         } else {
-          addToolCallMsg(part.id, toolName, status, input, output, subSessionId, agentName)
+          const resolvedAgentName = agentName || (subSessionId ? subAgentNames[subSessionId] : undefined)
+          addToolCallMsg(part.id, toolName, status, input, output, subSessionId, resolvedAgentName)
           if (subSessionId) {
             subSessionIds.add(subSessionId)
             if (agentName) subAgentNames[subSessionId] = agentName
@@ -313,6 +314,7 @@ function countLabel(toolCount, skillCount) {
       existing.status = status
       if (output !== undefined) existing.output = output
       if (subSessionId && !existing.subSessionId) existing.subSessionId = subSessionId
+      if (agentName && !existing.agent) existing.agent = agentName
       return
     }
     messages.value.push({
@@ -428,7 +430,8 @@ function countLabel(toolCount, skillCount) {
             const metadata = part.state?.metadata
             const subSessionId = metadata?.sessionId
             const agentName = metadata?.agent || metadata?.name
-            addToolCallMsg(part.id, toolName, status, input, output, subSessionId, agentName)
+            const resolvedAgentName = agentName || (subSessionId ? subAgentNames[subSessionId] : undefined)
+            addToolCallMsg(part.id, toolName, status, input, output, subSessionId, resolvedAgentName)
             if (subSessionId) { subSessionIds.add(subSessionId); if (agentName) subAgentNames[subSessionId] = agentName }
           }
         }
