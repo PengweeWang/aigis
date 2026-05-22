@@ -139,8 +139,13 @@ function handleStreamDelta(props) {
     const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === sessionID)
     if (!parent) return
     deltaAccum[partID] = (deltaAccum[partID] || '') + delta
-    if (partTypeByID[partID] === 'reasoning') parent._subReasoning = deltaAccum[partID]
-    else parent._subText = deltaAccum[partID]
+    if (partTypeByID[partID] === 'reasoning') {
+      parent._subReasoning = deltaAccum[partID]
+      if (parent.subStatus !== 'completed') parent._subStatusText = '思考中...'
+    } else {
+      parent._subText = deltaAccum[partID]
+      if (parent.subStatus !== 'completed') parent._subStatusText = '回复中...'
+    }
     return
   }
 
@@ -172,8 +177,26 @@ function handlePartUpdated(part) {
   if (isSubSession && (part.type === 'text' || part.type === 'reasoning')) {
     const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === part.sessionID)
     if (parent && text) {
-      if (part.type === 'reasoning') parent._subReasoning = (parent._subReasoning || '') + text
-      else parent._subText = (parent._subText || '') + text
+      if (parent.subStatus !== 'completed') {
+        if (part.type === 'reasoning') {
+          parent._subReasoning = (parent._subReasoning || '') + text
+          parent._subStatusText = '思考中...'
+        } else {
+          parent._subText = (parent._subText || '') + text
+          parent._subStatusText = '回复中...'
+        }
+      } else {
+        if (part.type === 'reasoning') parent._subReasoning = (parent._subReasoning || '') + text
+        else parent._subText = (parent._subText || '') + text
+      }
+      // If all tools are done and text has arrived, mark as completed
+      if (parent._subTools?.length) {
+        const allDone = parent._subTools.every(t => t.status === 'completed' || t.status === 'failed')
+        if (allDone && parent.subStatus !== 'completed') {
+          parent.subStatus = 'completed'
+          parent._subStatusText = '已完成'
+        }
+      }
     }
     return
   }
@@ -198,7 +221,7 @@ function handlePartUpdated(part) {
       const input = state.input; const output = state.output
       const metadata = state.metadata || {}
       const subSessionId = metadata.sessionId
-      const agentName = metadata?.agent || metadata?.name
+      const agentName = metadata?.agent || metadata?.name || (toolName === 'task' && input?.subagent_type)
 
       if (part.sessionID && subSessionIds.has(part.sessionID)) {
         if (status === 'pending') break
@@ -208,7 +231,19 @@ function handlePartUpdated(part) {
           const existing = parent._subTools.find(t => t.tool === toolName && t.status === 'running')
           if (existing) { existing.status = status; if (input !== undefined) existing.input = input; if (output !== undefined) existing.output = output }
           else parent._subTools.push({ id: uid(), tool: toolName, status, input, output, _expanded: false })
-          if (status === 'completed' || status === 'failed') parent.subStatus = status === 'completed' ? 'completed' : 'failed'
+          if (status === 'completed' || status === 'failed') {
+            const allDone = parent._subTools?.every(t => t.status === 'completed' || t.status === 'failed')
+            if (allDone) {
+              // Only mark completed if text has already arrived (streaming done)
+              if (parent._subText) {
+                parent.subStatus = 'completed'
+                parent._subStatusText = '已完成'
+              } else {
+                parent.subStatus = 'running'
+                parent._subStatusText = '等待回复...'
+              }
+            }
+          }
         }
       } else {
         addToolCallMsg(toolName, status, input, output, subSessionId, agentName)
@@ -308,20 +343,23 @@ async function handleSend({ text, agent, model }) {
       }),
     })
 
-    messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
-
     if (response.ok) {
       const result = await response.json()
       const rawParts = Array.isArray(result) ? result : (result.parts || [])
+      let hasTextContent = false
       for (const part of rawParts) {
-        if (part.type === 'tool') {
+        if (part.type === 'text' && part.text) {
+          hasTextContent = true
+          messages.value = messages.value.filter(mm => mm.id !== loadingMsg.id)
+          messages.value.push({ id: uid(), _partId: part.id, _sse: true, type: 'message', role: 'assistant', content: part.text, loading: false, typing: false })
+        } else if (part.type === 'tool') {
           const toolName = part.tool || 'unknown'
           const status = part.state?.status || 'completed'
           const input = part.state?.input
           const output = part.state?.output
           const metadata = part.state?.metadata
           const subSessionId = metadata?.sessionId
-          const agentName = metadata?.agent || metadata?.name
+          const agentName = metadata?.agent || metadata?.name || (toolName === 'task' && input?.subagent_type)
           addToolCallMsg(toolName, status, input, output, subSessionId, agentName)
           if (subSessionId) {
             subSessionIds.add(subSessionId)
@@ -329,14 +367,19 @@ async function handleSend({ text, agent, model }) {
           }
         }
       }
-      for (const m of messages.value) { if (m.typing) m.typing = false }
+      if (!hasTextContent) {
+        // Text will arrive via SSE — keep loading message, let session.status:idle handle cleanup
+      } else {
+        for (const mm of messages.value) { if (mm.typing) mm.typing = false }
+      }
     } else {
+      messages.value = messages.value.filter(mm => mm.id !== loadingMsg.id)
       addMessage('assistant', `请求失败: ${await response.text()}`)
+      sessionBusy.value = false
     }
   } catch (error) {
-    messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
+    messages.value = messages.value.filter(mm => mm.id !== loadingMsg.id)
     addMessage('assistant', `请求失败: ${error.message}`)
-  } finally {
     sessionBusy.value = false
   }
 }
@@ -348,7 +391,18 @@ async function handleAbort() {
   streamingPartId.value = null
   for (const m of messages.value) {
     if (m.typing) m.typing = false
-    if (m.type === 'tool_call' && m.status === 'running') m.status = 'cancelled'
+    if (m.type === 'tool_call') {
+      if (m.status === 'running') m.status = 'cancelled'
+      if (m.subStatus === 'running') {
+        m.subStatus = 'cancelled'
+        m._subStatusText = '已取消'
+        if (m._subTools) {
+          for (const st of m._subTools) {
+            if (st.status === 'running') st.status = 'cancelled'
+          }
+        }
+      }
+    }
   }
 }
 

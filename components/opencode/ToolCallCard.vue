@@ -4,8 +4,8 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
       </svg>
-      <span v-if="msg.agent" class="tool-agent-badge" :style="{ '--color': agentColor(msg.agent) }">{{ msg.agent }}</span>
-      <span class="tool-call-name">{{ msg.subSessionId && msg.agent ? msg.agent : msg.toolName }}</span>
+      <span v-if="msg.subSessionId && resolvedAgent" class="tool-agent-badge" :style="{ '--color': agentColor(resolvedAgent) }">{{ resolvedAgent }}</span>
+      <span class="tool-call-name">{{ msg.toolName }}</span>
       <template v-if="!msg.subSessionId">
         <span class="tool-call-status" :class="msg.status">
           <span class="status-dot" :class="msg.status"></span>
@@ -80,17 +80,23 @@
       </svg>
       <span>子智能体</span>
       <span class="sub-agent-status" :class="{ active: msg.subStatus === 'running' }">
-        {{ msg.subStatus === 'running' ? '运行中...' : msg.subStatus === 'completed' ? '已完成' : '已结束' }}
+        {{ msg.subStatus === 'running' ? '运行中...' : msg.subStatus === 'completed' ? '已完成' : msg.subStatus === 'cancelled' ? '已取消' : '已结束' }}
       </span>
     </div>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { renderMarkdown, formatToolInput, truncateOutput, agentColor, statusLabel } from './utils.js'
 
-defineProps({
+const props = defineProps({
   msg: { type: Object, required: true },
+})
+
+const resolvedAgent = computed(() => {
+  const m = props.msg
+  return m.agent || (m.toolName === 'task' && m.input?.subagent_type) || ''
 })
 </script>
 

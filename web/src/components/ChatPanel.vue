@@ -154,7 +154,7 @@
             </svg>
             <span>子智能体</span>
             <span class="sub-agent-status" :class="{ active: msg.subStatus === 'running' }">
-              {{ msg.subStatus === 'running' ? '运行中...' : msg.subStatus === 'completed' ? '已完成' : '已结束' }}
+              {{ msg.subStatus === 'running' ? '运行中...' : msg.subStatus === 'completed' ? '已完成' : msg.subStatus === 'cancelled' ? '已取消' : '已结束' }}
             </span>
           </div>
         </div>
@@ -482,7 +482,11 @@ function addToolCallMsg(toolName, status, input, output, subSessionId, agentName
       if (status === 'completed' && existing.subSessionId) {
         const tc = existing._toolCount || 0
         const sc = existing._skillCount || 0
-        existing._subStatusText = `已完成 (${countLabel(tc, sc)})`
+        if (existing._subText) {
+          existing._subStatusText = `已完成 (${countLabel(tc, sc)})`
+        } else {
+          existing._subStatusText = `等待回复... (${countLabel(tc, sc)})`
+        }
       }
       return existing
   }
@@ -658,9 +662,13 @@ function handleStreamDelta(props) {
     const ptype = partTypeByID[partID]
     if (ptype === 'reasoning') {
       parent._subReasoning = fullText
+      if (parent.subStatus !== 'completed') parent._subStatusText = '思考中...'
     } else {
       parent._subText = fullText
+      if (parent.subStatus !== 'completed') parent._subStatusText = '回复中...'
     }
+    return
+  }
     return
   }
 
@@ -720,13 +728,24 @@ function handlePartUpdated(part) {
   if (isSubSession && (part.type === 'text' || part.type === 'reasoning')) {
     const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === part.sessionID)
     if (parent && text) {
-      if (part.type === 'reasoning') {
-        parent._subReasoning = (parent._subReasoning || '') + text
-        parent._subStatusText = '思考中...'
-      } else {
-        parent._subText = (parent._subText || '') + text
-        if (text && parent._subStatusText !== '已完成') {
+      if (parent.subStatus !== 'completed') {
+        if (part.type === 'reasoning') {
+          parent._subReasoning = (parent._subReasoning || '') + text
+          parent._subStatusText = '思考中...'
+        } else {
+          parent._subText = (parent._subText || '') + text
           parent._subStatusText = '回复中...'
+        }
+      } else {
+        if (part.type === 'reasoning') parent._subReasoning = (parent._subReasoning || '') + text
+        else parent._subText = (parent._subText || '') + text
+      }
+      // If all tools are done and text has arrived, mark as completed
+      if (parent._subTools?.length) {
+        const allDone = parent._subTools.every(t => t.status === 'completed' || t.status === 'failed')
+        if (allDone && parent.subStatus !== 'completed') {
+          parent.subStatus = 'completed'
+          parent._subStatusText = `已完成 (${countLabel(parent._toolCount || 0, parent._skillCount || 0)})`
         }
       }
     }
@@ -769,14 +788,14 @@ function handlePartUpdated(part) {
       const isSubSession = part.sessionID && subSessionIds.has(part.sessionID)
       const agentName = isSubSession
         ? (subAgentNames[part.sessionID] || part.sessionID)
-        : (metadata.agent || metadata.name)
+        : (metadata.agent || metadata.name || (toolName === 'task' && input?.subagent_type))
 
       if (isSubSession) {
         // Sub-agent tool: nest inside parent task card
         if (status === 'pending') break
         const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === part.sessionID)
         if (parent) {
-          parent._subStatusText = `调用工具: ${toolName}`
+          if (parent.subStatus !== 'completed') parent._subStatusText = `调用工具: ${toolName}`
           if (!parent._subTools) parent._subTools = []
           const existing = parent._subTools.find(t => t.tool === toolName && t.status === 'running')
           if (existing) {
@@ -793,10 +812,16 @@ function handlePartUpdated(part) {
             })
           }
           if (status === 'completed' || status === 'failed') {
-            parent.subStatus = status === 'completed' ? 'completed' : 'failed'
             const allDone = parent._subTools?.every(t => t.status === 'completed' || t.status === 'failed')
-            if (allDone && parent._subText) {
-              parent._subStatusText = `已完成 (${countLabel(parent._toolCount || 0, parent._skillCount || 0)})`
+            if (allDone) {
+              const countInfo = countLabel(parent._toolCount || 0, parent._skillCount || 0)
+              if (parent._subText) {
+                parent.subStatus = 'completed'
+                parent._subStatusText = `已完成 (${countInfo})`
+              } else {
+                parent.subStatus = 'running'
+                parent._subStatusText = `等待回复... (${countInfo})`
+              }
             }
           }
         }
@@ -807,7 +832,7 @@ function handlePartUpdated(part) {
           if (agentName) subAgentNames[subSessionId] = agentName
           if (status === 'completed') {
             const toolMsg = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === subSessionId)
-            if (toolMsg) toolMsg.subStatus = 'completed'
+            if (toolMsg && toolMsg._subText) toolMsg.subStatus = 'completed'
           }
         }
       }
@@ -882,7 +907,18 @@ async function abortSession() {
   streamingPartId.value = null
   for (const m of messages.value) {
     if (m.typing) m.typing = false
-    if (m.type === 'tool_call' && m.status === 'running') m.status = 'cancelled'
+    if (m.type === 'tool_call') {
+      if (m.status === 'running') m.status = 'cancelled'
+      if (m.subStatus === 'running') {
+        m.subStatus = 'cancelled'
+        m._subStatusText = '已取消'
+        if (m._subTools) {
+          for (const st of m._subTools) {
+            if (st.status === 'running') st.status = 'cancelled'
+          }
+        }
+      }
+    }
   }
 }
 
@@ -932,20 +968,26 @@ async function handleSend() {
       })
     })
 
-    messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
-
     if (response.ok) {
       const result = await response.json()
       const rawParts = Array.isArray(result) ? result : (result.parts || [])
+      const hasText = rawParts.some(p => p.type === 'text' && p.text)
+      if (hasText) {
+        messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
+      }
       applyFinalResponse(rawParts, fullText)
+      if (!hasText) {
+        // Text will arrive via SSE — keep loading message, let session.status:idle handle cleanup
+      }
     } else {
+      messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
       const errorText = await response.text()
       addMessage('assistant', `请求失败: ${errorText}`)
+      sessionBusy.value = false
     }
   } catch (error) {
     messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
     addMessage('assistant', `请求失败: ${error.message}`)
-  } finally {
     sessionBusy.value = false
   }
 }
@@ -965,14 +1007,17 @@ function applyFinalResponse(rawParts, userText) {
       const metadata = part.state?.metadata
       const subSessionId = metadata?.sessionId
       const subOutput = metadata?.output
-      const agentName = metadata?.agent || metadata?.name
+      const agentName = metadata?.agent || metadata?.name || (toolName === 'task' && input?.subagent_type)
 
       addToolCallMsg(toolName, status, input, output || subOutput, subSessionId, agentName)
       if (subSessionId) {
         subSessionIds.add(subSessionId)
         if (agentName) subAgentNames[subSessionId] = agentName
         const toolMsg = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === subSessionId)
-        if (toolMsg) toolMsg.subStatus = status === 'completed' ? 'completed' : 'running'
+        if (toolMsg) {
+          if (status === 'completed' && toolMsg._subText) toolMsg.subStatus = 'completed'
+          else if (status !== 'completed') toolMsg.subStatus = 'running'
+        }
       }
     }
   }

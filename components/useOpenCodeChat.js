@@ -198,8 +198,10 @@ function countLabel(toolCount, skillCount) {
       if (!parent) return
       if (partTypeByID[partID] === 'reasoning') {
         parent._subReasoning = (parent._subReasoning || '') + delta
+        if (parent.subStatus !== 'completed') parent._subStatusText = '思考中...'
       } else {
         parent._subText = (parent._subText || '') + delta
+        if (parent.subStatus !== 'completed') parent._subStatusText = '回复中...'
       }
       return
     }
@@ -231,13 +233,24 @@ function countLabel(toolCount, skillCount) {
     if (isSubSession && (part.type === 'text' || part.type === 'reasoning')) {
       const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === part.sessionID)
       if (parent && text) {
-        if (part.type === 'reasoning') {
-          parent._subReasoning = (parent._subReasoning || '') + text
-          parent._subStatusText = '思考中...'
-        } else {
-          parent._subText = (parent._subText || '') + text
-          if (text && parent._subStatusText !== '已完成') {
+        if (parent.subStatus !== 'completed') {
+          if (part.type === 'reasoning') {
+            parent._subReasoning = (parent._subReasoning || '') + text
+            parent._subStatusText = '思考中...'
+          } else {
+            parent._subText = (parent._subText || '') + text
             parent._subStatusText = '回复中...'
+          }
+        } else {
+          if (part.type === 'reasoning') parent._subReasoning = (parent._subReasoning || '') + text
+          else parent._subText = (parent._subText || '') + text
+        }
+        // If all tools are done and text has arrived, mark as completed
+        if (parent._subTools?.length) {
+          const allDone = parent._subTools.every(t => t.status === 'completed' || t.status === 'failed')
+          if (allDone && parent.subStatus !== 'completed') {
+            parent.subStatus = 'completed'
+            parent._subStatusText = `已完成 (${countLabel(parent._toolCount || 0, parent._skillCount || 0)})`
           }
         }
       }
@@ -264,13 +277,13 @@ function countLabel(toolCount, skillCount) {
         const input = state.input; const output = state.output
         const metadata = state.metadata || {}
         const subSessionId = metadata.sessionId
-        const agentName = metadata?.agent || metadata?.name
+        const agentName = metadata?.agent || metadata?.name || (toolName === 'task' && input?.subagent_type)
 
         if (part.sessionID && subSessionIds.has(part.sessionID)) {
           if (status === 'pending') break
           const parent = messages.value.find(m => m.type === 'tool_call' && m.subSessionId === part.sessionID)
           if (parent) {
-            parent._subStatusText = `调用工具: ${toolName}`
+            if (parent.subStatus !== 'completed') parent._subStatusText = `调用工具: ${toolName}`
             if (!parent._subTools) parent._subTools = []
             const existing = parent._subTools.find(t => t.partID === part.id)
             if (existing) {
@@ -287,8 +300,15 @@ function countLabel(toolCount, skillCount) {
               const allTools = parent._subTools || []
               const allDone = allTools.every(t => t.status === 'completed' || t.status === 'failed')
               if (allDone) {
-                parent.subStatus = 'completed'
-                parent._subStatusText = `已完成 (${countLabel(parent._toolCount || 0, parent._skillCount || 0)})`
+                const countInfo = countLabel(parent._toolCount || 0, parent._skillCount || 0)
+                // Only mark completed if text has already arrived (streaming done)
+                // Otherwise, wait for text part update to set completed
+                if (parent._subText) {
+                  parent.subStatus = 'completed'
+                  parent._subStatusText = `已完成 (${countInfo})`
+                } else {
+                  parent._subStatusText = `等待回复... (${countInfo})`
+                }
               }
             }
           }
@@ -416,33 +436,42 @@ function countLabel(toolCount, skillCount) {
         }),
       })
 
-      messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
-
       if (response.ok) {
         const result = await response.json()
         const rawParts = Array.isArray(result) ? result : (result.parts || [])
+        let hasTextContent = false
         for (const part of rawParts) {
-          if (part.type === 'tool') {
+          if (part.type === 'text' && part.text) {
+            hasTextContent = true
+            messages.value = messages.value.filter(mm => mm.id !== loadingMsg.id)
+            const existing = messages.value.find(mm => mm._partId === part.id && mm.type === 'message' && mm.role === 'assistant')
+            if (!existing) messages.value.push({ id: uid(), _partId: part.id, _sse: true, type: 'message', role: 'assistant', content: part.text, loading: false, typing: false })
+          } else if (part.type === 'tool') {
             const toolName = part.tool || 'unknown'
             const status = part.state?.status || 'completed'
             const input = part.state?.input
             const output = part.state?.output
             const metadata = part.state?.metadata
             const subSessionId = metadata?.sessionId
-            const agentName = metadata?.agent || metadata?.name
+            const agentName = metadata?.agent || metadata?.name || (toolName === 'task' && input?.subagent_type)
             const resolvedAgentName = agentName || (subSessionId ? subAgentNames[subSessionId] : undefined)
             addToolCallMsg(part.id, toolName, status, input, output, subSessionId, resolvedAgentName)
-            if (subSessionId) { subSessionIds.add(subSessionId); if (agentName) subAgentNames[subSessionId] = agentName }
+            if (subSessionId) { subSessionIds.add(subSessionId); if (resolvedAgentName) subAgentNames[subSessionId] = resolvedAgentName }
           }
         }
-        for (const m of messages.value) { if (m.typing) m.typing = false }
+        if (!hasTextContent) {
+          // Text will arrive via SSE — keep loading message, let session.status:idle handle cleanup
+        } else {
+          for (const mm of messages.value) { if (mm.typing) mm.typing = false }
+        }
       } else {
+        messages.value = messages.value.filter(mm => mm.id !== loadingMsg.id)
         messages.value.push({ id: uid(), type: 'message', role: 'assistant', content: `请求失败: ${await response.text()}` })
+        sessionBusy.value = false
       }
     } catch (error) {
-      messages.value = messages.value.filter(m => m.id !== loadingMsg.id)
+      messages.value = messages.value.filter(mm => mm.id !== loadingMsg.id)
       messages.value.push({ id: uid(), type: 'message', role: 'assistant', content: `请求失败: ${error.message}` })
-    } finally {
       sessionBusy.value = false
     }
   }
@@ -503,7 +532,18 @@ function countLabel(toolCount, skillCount) {
     streamingPartIds.clear()
     for (const m of messages.value) {
       if (m.typing) m.typing = false
-      if (m.type === 'tool_call' && m.status === 'running') m.status = 'cancelled'
+      if (m.type === 'tool_call') {
+        if (m.status === 'running') m.status = 'cancelled'
+        if (m.subStatus === 'running') {
+          m.subStatus = 'cancelled'
+          m._subStatusText = '已取消'
+          if (m._subTools) {
+            for (const st of m._subTools) {
+              if (st.status === 'running') st.status = 'cancelled'
+            }
+          }
+        }
+      }
     }
   }
 
