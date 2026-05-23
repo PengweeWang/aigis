@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@opencode-chat': fileURLToPath(new URL('..', import.meta.url)),
+      '@opencode-chat': fileURLToPath(new URL('../components', import.meta.url)),
     },
   },
 })

@@ -29,7 +29,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import OpenCodeChatPanel from '../../OpenCodeChatPanel.vue'
+import OpenCodeChatPanel from '../../components/OpenCodeChatPanel.vue'
 
 const panelWidth = ref(Math.round(window.innerWidth * 0.18))
 </script>

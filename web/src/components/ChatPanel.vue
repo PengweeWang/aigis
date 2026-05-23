@@ -669,16 +669,9 @@ function handleStreamDelta(props) {
     }
     return
   }
-    return
-  }
 
   deltaAccum[partID] = (deltaAccum[partID] || '') + delta
   const fullText = deltaAccum[partID]
-
-  // Redirect sub-session deltas to parent task card
-  const partType = partTypeByID[partID]
-  if (partType === 'reasoning' || partType === 'text') {
-  }
 
   if (!streamingPartId.value || streamingPartId.value !== partID) {
     streamingPartId.value = partID
