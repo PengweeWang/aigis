@@ -93,6 +93,7 @@ defineProps({
 }
 .bubble.user .user-text {
   color: #fff;
+  user-select: text;
 }
 .bubble[data-loading] {
   display: flex;
