@@ -2,17 +2,19 @@ import { ref } from 'vue'
 
 const AGENT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f97316', '#ef4444']
 
-export function useOpenCodeChat(serverUrl = 'http://127.0.0.1:4096') {
+export function useOpenCodeChat(serverUrl = 'http://127.0.0.1:4096', options = {}) {
   const messages = ref([])
   const sessionBusy = ref(false)
-  const selectedAgent = ref('')
-  const selectedModel = ref('')
+  const selectedAgent = ref(options.defaultAgent || 'gis-orchestrator')
+  const selectedModel = ref(options.defaultModel || '')
   const modelOptions = ref([])
   const agents = ref([])
   const currentSessionId = ref(null)
   const serverConnected = ref(false)
   const pendingQuestion = ref(null)
   const pendingPermission = ref(null)
+  const todos = ref([])
+  const onNewSession = options.onNewSession || null
 
   let eventSource = null
   let eventReconnectTimer = null
@@ -184,6 +186,11 @@ function countLabel(toolCount, skillCount) {
         if (pendingPermission.value && (props.requestID === pendingPermission.value.id || props.requestID === pendingPermission.value.requestID)) {
           pendingPermission.value = null
         }
+        break
+      }
+      case 'todo.updated': {
+        if (props.todos) todos.value = props.todos
+        else if (Array.isArray(props.items)) todos.value = props.items
         break
       }
     }
@@ -362,6 +369,9 @@ function countLabel(toolCount, skillCount) {
       if (mapped.length > 0 && !selectedAgent.value) {
         selectedAgent.value = mapped[0].value
       }
+      if (options.defaultAgent && mapped.some(a => a.value === options.defaultAgent)) {
+        selectedAgent.value = options.defaultAgent
+      }
     } catch {}
   }
 
@@ -370,11 +380,11 @@ function countLabel(toolCount, skillCount) {
       const r = await fetch(`${serverUrl}/config/providers`)
       if (!r.ok) return
       const data = await r.json()
-      const options = []
+      const list = []
       for (const provider of data.providers || []) {
         for (const model of Object.values(provider.models || {})) {
           const variants = model.variants ? Object.keys(model.variants) : undefined
-          options.push({
+          list.push({
             value: model.id,
             providerID: model.providerID,
             name: model.name || model.id,
@@ -384,9 +394,13 @@ function countLabel(toolCount, skillCount) {
           })
         }
       }
-      if (!options.length) return
-      modelOptions.value = options
-      selectedModel.value = options.find(o => o.value === 'minimax-m2.5-free')?.value || options[0].value
+      if (!list.length) return
+      modelOptions.value = list
+      if (options.defaultModel && list.some(o => o.value === options.defaultModel)) {
+        selectedModel.value = options.defaultModel
+      } else {
+        selectedModel.value = list.find(o => o.value === 'minimax-m2.5-free')?.value || list[0].value
+      }
     } catch {}
   }
 
@@ -409,12 +423,17 @@ function countLabel(toolCount, skillCount) {
     return false
   }
 
-  async function handleSend({ text, agent, model, thinkingEffort }) {
+  async function handleSend({ text, agent, model, thinkingEffort, points }) {
     if (!currentSessionId.value) {
       if (!(await createSession())) return
     }
 
-    messages.value.push({ id: uid(), type: 'message', role: 'user', content: text })
+    const pointsArr = points || []
+    let fullText = text
+    if (pointsArr.length > 0) {
+      fullText = `[地图标注点]\n${pointsArr.map(p => `${p.label} (${p.lng}, ${p.lat})`).join('\n')}\n\n[用户问题]\n${text}`
+    }
+    messages.value.push({ id: uid(), type: 'message', role: 'user', content: fullText, points: pointsArr.length > 0 ? pointsArr : undefined, userText: text })
     sessionBusy.value = true
     streamingPartIds.clear()
     currentUserMessageId = null
@@ -429,9 +448,9 @@ function countLabel(toolCount, skillCount) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          agent: agent || 'orchestrator',
+          agent: agent || 'gis-orchestrator',
           model: m ? { providerID: m.providerID, modelID: m.value } : undefined,
-          parts: [{ type: 'text', text }],
+          parts: [{ type: 'text', text: fullText }],
           settings: m?.variants?.length && thinkingEffort ? { thinkingEffort } : undefined,
         }),
       })
@@ -548,12 +567,102 @@ function countLabel(toolCount, skillCount) {
   }
 
   async function handleNewSession() {
+    const realMsgs = messages.value.filter(m => m.type !== 'system')
+    if (currentSessionId.value && realMsgs.length === 0 && !sessionBusy.value) {
+      addSystemMessage('当前已是新会话')
+      return
+    }
+    if (onNewSession) onNewSession()
     messages.value = []
     sessionBusy.value = false
     streamingPartIds.clear()
     subSessionIds.clear()
     await createSession()
     addSystemMessage('已创建新会话')
+  }
+
+  async function fetchSessionList() {
+    try {
+      const r = await fetch(`${serverUrl}/session`)
+      if (!r.ok) return []
+      const data = await r.json()
+      return data || []
+    } catch {
+      return []
+    }
+  }
+
+  async function switchSession(sessionId) {
+    try {
+      const r = await fetch(`${serverUrl}/session/${sessionId}/message`)
+      if (!r.ok) return false
+      const data = await r.json()
+      messages.value = []
+      sessionBusy.value = false
+      streamingPartIds.clear()
+      subSessionIds.clear()
+      currentUserMessageId = null
+      currentSessionId.value = sessionId
+
+      for (const msg of data) {
+        const isUser = msg.info?.role === 'user'
+        const isAssistant = msg.info?.role === 'assistant'
+        if (!isUser && !isAssistant) continue
+        const parts = msg.parts || []
+        for (const part of parts) {
+          if (part.type === 'text' && part.text) {
+            messages.value.push({
+              id: uid(),
+              type: 'message',
+              role: isUser ? 'user' : 'assistant',
+              content: part.text,
+              loading: false,
+              typing: false,
+            })
+          } else if (part.type === 'reasoning' && part.text) {
+            messages.value.push({
+              id: uid(),
+              type: 'reasoning',
+              content: part.text,
+              expanded: false,
+            })
+          } else if (part.type === 'tool') {
+            const toolName = part.tool || 'unknown'
+            const state = part.state || {}
+            const status = state.status || 'completed'
+            const input = state.input
+            const output = state.output
+            const metadata = state.metadata || {}
+            const subSessionId = metadata.sessionId
+            const agentName = metadata?.agent || metadata?.name || (toolName === 'task' && input?.subagent_type)
+            addToolCallMsg(part.id, toolName, status, input, output, subSessionId, agentName)
+          }
+        }
+      }
+      addSystemMessage(`已切换到会话 ${sessionId.slice(0, 8)}`)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function deleteSession(sessionId) {
+    try {
+      const r = await fetch(`${serverUrl}/session/${sessionId}`, { method: 'DELETE' })
+      return r.ok
+    } catch {
+      return false
+    }
+  }
+
+  async function fetchTodos() {
+    if (!currentSessionId.value) return
+    try {
+      const r = await fetch(`${serverUrl}/session/${currentSessionId.value}/todo`)
+      if (!r.ok) return
+      const data = await r.json()
+      todos.value = Array.isArray(data) ? data : (data?.items || data?.todos || [])
+    } catch {}
   }
 
   async function init() {
@@ -590,12 +699,18 @@ function countLabel(toolCount, skillCount) {
     serverConnected,
     pendingQuestion,
     pendingPermission,
+    currentSessionId,
+    todos,
     handleSend,
     handleAbort,
     handleNewSession,
     answerQuestion,
     cancelQuestion,
     respondPermission,
+    fetchSessionList,
+    switchSession,
+    deleteSession,
+    fetchTodos,
     init,
     cleanup,
   }

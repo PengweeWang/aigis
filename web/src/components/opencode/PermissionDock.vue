@@ -33,25 +33,29 @@ defineEmits(['respond'])
 
 <style scoped>
 .permission-dock {
-  padding: 12px 14px;
-  border-top: 1px solid #e8e8e8;
-  background: linear-gradient(135deg, #fff5f5, #fff0f0);
+  padding: 14px 16px;
+  border-top: 1px solid #fecaca;
+  background: linear-gradient(180deg, #fff7ed 0%, #fff1f2 100%);
+  flex-shrink: 0;
+  user-select: none;
 }
 .permission-dock-body {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .permission-patterns {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  margin-top: 6px;
 }
 .permission-pattern {
   font-size: 11px;
   font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
-  background: rgba(0,0,0,0.05);
-  padding: 3px 8px;
-  border-radius: 4px;
-  color: #cf1322;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: #b91c1c;
   word-break: break-all;
 }
 
@@ -61,39 +65,76 @@ defineEmits(['respond'])
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: #d48806;
+  color: #b45309;
   margin-bottom: 8px;
 }
+.question-dock-header svg {
+  color: #f97316;
+  flex-shrink: 0;
+}
 .question-dock-text {
-  font-size: 11px;
-  color: #666;
+  font-size: 12px;
+  color: #6b7280;
   margin-bottom: 8px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .question-dock-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
 }
 .q-btn {
-  padding: 6px 14px;
-  border-radius: 6px;
+  padding: 7px 16px;
+  border-radius: 8px;
   border: none;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
 }
-.q-btn-cancel { background: #f0f0f0; color: #666; }
-.q-btn-cancel:hover { background: #e4e4e4; }
+.q-btn:focus-visible {
+  box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.3);
+}
+.q-btn-cancel {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.q-btn-cancel:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+.q-btn-cancel:active {
+  transform: scale(0.97);
+}
 .q-btn-always {
-  background: #f0f0f0;
-  color: #555;
+  background: #f3f4f6;
+  color: #4b5563;
 }
 .q-btn-always:hover {
-  background: #e4e4e4;
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #fcd34d;
 }
-.q-btn-submit { background: #d48806; color: #fff; }
-.q-btn-submit:hover { background: #e8a020; }
-.q-btn-submit:disabled { background: #d9d9d9; color: #fff; cursor: not-allowed; }
+.q-btn-always:active {
+  transform: scale(0.97);
+}
+.q-btn-submit {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(249, 115, 22, 0.3);
+}
+.q-btn-submit:hover {
+  background: linear-gradient(135deg, #fb923c, #f97316);
+  box-shadow: 0 2px 6px rgba(249, 115, 22, 0.4);
+}
+.q-btn-submit:active {
+  transform: scale(0.97);
+}
+.q-btn-submit:disabled {
+  background: #d1d5db;
+  color: #9ca3af;
+  cursor: not-allowed;
+  box-shadow: none;
+}
 </style>

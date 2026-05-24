@@ -34,57 +34,80 @@ defineProps({
 
 <style scoped>
 .thinking-block {
-  border: 1px solid #e8e8e8;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
   overflow: hidden;
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s;
+  user-select: none;
+}
+.thinking-block:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.thinking-block[open] {
+  box-shadow: 0 1px 4px rgba(249, 115, 22, 0.08);
 }
 .thinking-block summary {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   padding: 10px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: #555;
+  color: #4b5563;
   cursor: pointer;
   user-select: none;
-  background: #fafbfc;
-  transition: background 0.15s;
+  background: #f9fafb;
+  transition: background 0.15s, color 0.15s;
+  outline: none;
+}
+.thinking-block summary::-webkit-details-marker { display: none; }
+.thinking-block summary:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(249, 115, 22, 0.3);
 }
 .thinking-block summary:hover {
-  background: #f5f7fa;
+  background: #f3f4f6;
+  color: #ea580c;
+}
+.thinking-block summary svg:first-child {
+  color: #f97316;
+  flex-shrink: 0;
 }
 .thinking-block summary .chevron {
   margin-left: auto;
-  transition: transform 0.2s;
-  color: #bbb;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #9ca3af;
+  flex-shrink: 0;
 }
 .thinking-block[open] summary .chevron {
   transform: rotate(180deg);
+  color: #ea580c;
 }
 .thinking-block[open] summary {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #e5e7eb;
+  color: #ea580c;
 }
 
 .thought-chain {
   padding: 10px 14px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 1px;
 }
 .chain-step {
   display: flex;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border-radius: 8px;
   background: #f8f9fa;
   font-size: 12px;
-  transition: background 0.15s;
+  transition: background 0.15s, box-shadow 0.15s;
+  position: relative;
 }
 .chain-step:hover {
-  background: #f0f2f5;
+  background: #f3f4f6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 .chain-step-indicator {
   flex-shrink: 0;
@@ -93,30 +116,46 @@ defineProps({
   justify-content: center;
   padding-top: 2px;
 }
+.chain-step-indicator::after {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 28px;
+  width: 2px;
+  bottom: -8px;
+  background: #e5e7eb;
+  border-radius: 1px;
+}
+.chain-step:last-child .chain-step-indicator::after {
+  display: none;
+}
 .step-icon {
-  width: 16px; height: 16px;
+  width: 18px; height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 9px;
   font-weight: 700;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-.step-icon.completed { background: #52c41a; color: #fff; }
-.step-icon.error { background: #ff4d4f; color: #fff; }
+.step-icon.completed { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; }
+.step-icon.error { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; }
 .step-icon.active {
-  background: #1890ff;
-  box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.2);
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.25);
   animation: pulse 1.5s infinite;
 }
 .step-icon.pending {
-  background: #d9d9d9;
+  background: #d1d5db;
 }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
-.chain-step-body { flex: 1; }
-.chain-step-title { font-weight: 600; color: #333; }
-.chain-step-content { color: #888; font-size: 11px; margin-top: 3px; }
+.chain-step-body { flex: 1; min-width: 0; }
+.chain-step-title { font-weight: 600; color: #374151; line-height: 1.4; }
+.chain-step-content { color: #9ca3af; font-size: 11px; margin-top: 3px; line-height: 1.4; }
 </style>

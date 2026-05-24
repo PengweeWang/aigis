@@ -6,12 +6,17 @@ export function renderMarkdown(text) {
   if (!text) return ''
   let html = escapeHtml(text)
 
+  const blocks = []
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const langClass = lang ? ` class="lang-${escapeHtml(lang)}"` : ''
-    return `<pre${langClass}><code>${code}</code></pre>`
+    blocks.push(`<pre${langClass}><code>${code}</code></pre>`)
+    return '\x02' + (blocks.length - 1) + '\x03'
   })
 
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+  html = html.replace(/`([^`]+)`/g, (_, code) => {
+    blocks.push(`<code>${code}</code>`)
+    return '\x02' + (blocks.length - 1) + '\x03'
+  })
 
   html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>')
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
@@ -24,9 +29,12 @@ export function renderMarkdown(text) {
 
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
 
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+  const m1 = '\x00'
+  const m2 = '\x01'
+  html = html.replace(/^- (.+)$/gm, m1 + '$1' + m2)
+  html = html.replace(new RegExp('(' + m1 + '[^' + m1 + m2 + ']*' + m2 + '\\n?)+', 'g'), (s) => '<ul>' + s.replace(new RegExp(m1, 'g'), '<li>').replace(new RegExp(m2, 'g'), '</li>') + '</ul>')
+  html = html.replace(/^\d+\. (.+)$/gm, m1 + '$1' + m2)
+  html = html.replace(new RegExp('(' + m1 + '[^' + m1 + m2 + ']*' + m2 + '\\n?)+', 'g'), (s) => '<ol>' + s.replace(new RegExp(m1, 'g'), '<li>').replace(new RegExp(m2, 'g'), '</li>') + '</ol>')
 
   html = html.replace(/^---+\s*$/gm, '<hr>')
 
@@ -59,6 +67,8 @@ export function renderMarkdown(text) {
     p = p.replace(/\n/g, '<br>')
     return `<p>${p}</p>`
   }).join('')
+
+  html = html.replace(/\x02(\d+)\x03/g, (_, i) => blocks[+i] || '')
 
   return html
 }

@@ -16,6 +16,10 @@ const userMarkers = ref([]);
 const labelCounter = ref(0);
 const freedLabels = ref([]);
 
+const MARKER_PALETTE = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f97316']
+let colorIndex = 0
+const labelColorMap = {}
+
 function getNextLabel() {
   if (freedLabels.value.length > 0) {
     freedLabels.value.sort((a, b) => a.localeCompare(b));
@@ -32,20 +36,29 @@ function getNextLabel() {
   return label;
 }
 
+function getMarkerColor() {
+  const c = MARKER_PALETTE[colorIndex % MARKER_PALETTE.length]
+  colorIndex++
+  return c
+}
+
 function onMapClick(e) {
   if (!addModeEnabled.value || !AMapInstance) return;
   const lng = e.lnglat.getLng();
   const lat = e.lnglat.getLat();
   const label = getNextLabel();
   const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const color = labelColorMap[label] || getMarkerColor()
+  labelColorMap[label] = color
   const contentDiv = document.createElement('div');
   contentDiv.className = 'amap-user-marker';
   contentDiv.dataset.amapUid = uid;
-  contentDiv.innerHTML = '<span class="amap-user-marker-label">' + label + '</span><span class="amap-user-marker-close">×</span>';
+  contentDiv.style.setProperty('--marker-color', color);
+  contentDiv.innerHTML = '<div class="amap-user-marker-body"><span class="amap-user-marker-label">' + label + '</span></div><div class="amap-user-marker-arrow"></div><span class="amap-user-marker-close">&times;</span>';
   const marker = new AMapInstance.Marker({
     position: [lng, lat],
     content: contentDiv,
-    offset: new AMapInstance.Pixel(-15, -15),
+    offset: new AMapInstance.Pixel(-14, -33),
     zIndex: 120,
   });
   map.value.add(marker);
@@ -107,6 +120,8 @@ function clearUserPoints() {
   userMarkers.value = [];
   labelCounter.value = 0;
   freedLabels.value = [];
+  colorIndex = 0
+  for (const k of Object.keys(labelColorMap)) delete labelColorMap[k]
 }
 
 let closeClickListenerCleanup = null;
@@ -220,48 +235,94 @@ onUnmounted(() => {
 
 <style>
 .amap-user-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: marker-pop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  pointer-events: auto;
+}
+
+.amap-user-marker-body {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--marker-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.1);
+  border: 2.5px solid #fff;
   position: relative;
-  width: 30px;
-  height: 30px;
+  z-index: 1;
 }
 
 .amap-user-marker-label {
-  display: flex;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: #1890ff;
-  align-items: center;
-  justify-content: center;
   color: #fff;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  border: 2.5px solid #fff;
-  cursor: pointer;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   user-select: none;
+}
+
+.amap-user-marker-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid var(--marker-color);
+  margin-top: -2px;
+  position: relative;
+  z-index: 0;
 }
 
 .amap-user-marker-close {
   position: absolute;
-  top: -7px;
-  right: -7px;
-  width: 17px;
-  height: 17px;
+  top: -2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: #ff4d4f;
-  color: #fff;
-  font-size: 14px;
-  line-height: 17px;
+  background: #fff;
+  color: #999;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
   text-align: center;
   cursor: pointer;
   border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  z-index: 5;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.2s ease, transform 0.2s ease, color 0.15s, border-color 0.15s, background 0.15s;
   user-select: none;
-  transition: background 0.15s;
+}
+
+.amap-user-marker:hover .amap-user-marker-close {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .amap-user-marker-close:hover {
-  background: #ff1a1a;
+  color: #fff;
+  background: #ff4d4f;
+  border-color: #ff4d4f;
+  box-shadow: 0 2px 6px rgba(255, 77, 79, 0.35);
+}
+
+@keyframes marker-pop {
+  0% {
+    transform: scale(0) translateY(8px);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1) translateY(-1px);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
 }
 </style>
