@@ -115,8 +115,8 @@ function isValidCoord(lng, lat) {
 }
 
 function calcZoom(lng1, lat1, lng2, lat2) {
-  const spanLng = Math.abs(lng1 - lng2) * 1.3
-  const spanLat = Math.abs(lat1 - lat2) * 1.3
+  const spanLng = Math.abs(lng1 - lng2) * 1.1
+  const spanLat = Math.abs(lat1 - lat2) * 1.1
   const zLng = Math.log2(360 / Math.max(spanLng, 0.001))
   const zLat = Math.log2(180 / Math.max(spanLat, 0.001))
   return Math.max(3, Math.min(18, Math.floor(Math.min(zLng, zLat))))
