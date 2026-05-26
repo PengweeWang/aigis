@@ -27,10 +27,10 @@
 `origin_formatted_address` / `destination_formatted_address` 为起点/终点地址文本。
 推送到 data server `polyline` 通道的数据包含起点/终点信息 + 路径分段坐标，返回结果中已剔除 `polyline` 字段。
 
-### `direction_distence(loc1, loc2, origin_formatted_address?, destination_formatted_address?)`
+### `direction_distance(loc1, loc2, origin_formatted_address?, destination_formatted_address?)`
 
 计算两点直线距离（米）。`origin_formatted_address` / `destination_formatted_address` 为起点/终点地址文本。
-结果推送到 data server `distence` 通道，包含起点/终点坐标、地址及距离。
+结果推送到 data server `distance` 通道，包含起点/终点坐标、地址及距离。
 
 ### `set_final(isFinal)`
 

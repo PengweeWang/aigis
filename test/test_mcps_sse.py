@@ -5,7 +5,7 @@ from mcps.server_sse import (
     geocode,
     geodecode,
     route_planning,
-    direction_distence,
+    direction_distance,
 )
 
 
@@ -81,25 +81,25 @@ def test_route_planning():
     print()
 
 
-def test_direction_distence():
-    raw = direction_distence(
+def test_direction_distance():
+    raw = direction_distance(
         "116.397428,39.90923",
         "116.417428,39.92923",
         origin_formatted_address="北京市东城区东直门",
         destination_formatted_address="北京市东城区雍和宫",
     )
     obj = json.loads(raw)
-    data = check_envelope(obj, "distence")
+    data = check_envelope(obj, "distance")
 
     assert len(data) == 1
     item = data[0]
     assert "origin" in item
     assert "destination" in item
-    assert "distence" in item
-    assert isinstance(item["distence"], (int, float))
-    assert item["distence"] > 0
+    assert "distance" in item
+    assert isinstance(item["distance"], (int, float))
+    assert item["distance"] > 0
 
-    print("=== direction_distence ===")
+    print("=== direction_distance ===")
     print(json.dumps(obj, indent=2, ensure_ascii=False))
     print()
 
@@ -108,4 +108,4 @@ if __name__ == "__main__":
     test_geocode()
     test_geodecode()
     test_route_planning()
-    test_direction_distence()
+    test_direction_distance()

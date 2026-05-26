@@ -161,7 +161,7 @@ function renderData(data) {
       const z = calcZoom(meta.origin.lng, meta.origin.lat, meta.destination.lng, meta.destination.lat)
       mc.setCenter([(meta.origin.lng + meta.destination.lng) / 2, (meta.origin.lat + meta.destination.lat) / 2], z)
     }
-  } else if (data.type === 'distence') {
+  } else if (data.type === 'distance') {
     const DIST_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f97316', '#8b5cf6', '#ef4444']
     data.data.forEach((item) => {
       if (isValidCoord(item.origin?.lng, item.origin?.lat)) {

@@ -14,7 +14,7 @@ tools:
   gis_geocode: false
   gis_geodecode: false
   gis_route_planning: false
-  gis_direction_distence: false
+  gis_direction_distance: false
   gis_set_final: true
   webfetch: false
   bash: false

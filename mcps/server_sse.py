@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from api import direction_distence as calc_distance
+from api import direction_distance as calc_distance
 from api import AmapClient as Client
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
@@ -71,17 +71,17 @@ def route_planning(origin: str, destination: str,
 
 
 @mcp.tool()
-def direction_distence(loc1: str, loc2: str, origin_formatted_address: str = "", destination_formatted_address: str = "") -> str:
+def direction_distance(loc1: str, loc2: str, origin_formatted_address: str = "", destination_formatted_address: str = "") -> str:
     dist = calc_distance(loc1, loc2)
     lng1, lat1 = map(float, loc1.split(","))
     lng2, lat2 = map(float, loc2.split(","))
     return json.dumps({
-        "type": "distence",
+        "type": "distance",
         "isFinal": False,
         "data": [{
             "origin": {"lng": lng1, "lat": lat1, "address": origin_formatted_address},
             "destination": {"lng": lng2, "lat": lat2, "address": destination_formatted_address},
-            "distence": dist,
+            "distance": dist,
         }],
     }, ensure_ascii=False)
 

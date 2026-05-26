@@ -96,19 +96,19 @@ WebSocket 客户端连接后立即收到当前数据，后续每次数据更新�
 
 ---
 
-### 3. `type = "distence"` — 直线距离
+### 3. `type = "distance"` — 直线距离
 
-**来源**: `direction_distence` 工具
+**来源**: `direction_distance` 工具
 
 ```json
 {
-  "type": "distence",
+  "type": "distance",
   "isFinal": false,
   "data": [
     {
       "origin": {"lng": 116.397428, "lat": 39.90923, "address": "北京市东城区东直门"},
       "destination": {"lng": 116.417428, "lat": 39.92923, "address": "北京市东城区雍和宫"},
-      "distence": 2500.0
+      "distance": 2500.0
     }
   ]
 }
@@ -118,4 +118,4 @@ WebSocket 客户端连接后立即收到当前数据，后续每次数据更新�
 |------|------|------|
 | `origin` | `object` | `{ lng: number, lat: number, address: string }` 起点坐标及地址 |
 | `destination` | `object` | `{ lng: number, lat: number, address: string }` 终点坐标及地址 |
-| `distence` | `number` | 两点直线距离（单位：米） |
+| `distance` | `number` | 两点直线距离（单位：米） |

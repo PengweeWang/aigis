@@ -1,6 +1,6 @@
 import math
 
-def direction_distence(loc1: str, loc2: str) -> float:
+def direction_distance(loc1: str, loc2: str) -> float:
     """
     计算两个经纬度之间的距离，单位为米
     :param loc1: 第一个经纬度字符串，经度在前，纬度在后，经纬度间以“,”分割。

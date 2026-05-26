@@ -1,11 +1,14 @@
 import os
 import json
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-from api import direction_distence as calc_distance
+from api import direction_distance as calc_distance
 # from api import DbrgClient as Client
 from api import AmapClient as Client
+
+logger = logging.getLogger(__name__)
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
@@ -30,8 +33,8 @@ def _set(typ: str, data: list) -> None:
             json={"type": typ, "data": data},
             timeout=5,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to push data to server: %s", e)
 
 
 def _patch_final(isFinal: bool) -> None:
@@ -42,8 +45,8 @@ def _patch_final(isFinal: bool) -> None:
             json={"isFinal": isFinal},
             timeout=5,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to patch final state: %s", e)
 
 
 @mcp.tool()
@@ -123,7 +126,7 @@ def route_planning(origin: str, destination: str,
 
 
 @mcp.tool()
-def direction_distence(loc1: str, loc2: str, origin_formatted_address: str = "", destination_formatted_address: str = "") -> float:
+def direction_distance(loc1: str, loc2: str, origin_formatted_address: str = "", destination_formatted_address: str = "") -> float:
     """
     Calculate the distance between two locations.
     :param loc1: The first location in the format "longitude,latitude".
@@ -135,10 +138,10 @@ def direction_distence(loc1: str, loc2: str, origin_formatted_address: str = "",
     dist = calc_distance(loc1, loc2)
     lng1, lat1 = map(float, loc1.split(","))
     lng2, lat2 = map(float, loc2.split(","))
-    _set("distence", [{
+    _set("distance", [{
         "origin": {"lng": lng1, "lat": lat1, "address": origin_formatted_address},
         "destination": {"lng": lng2, "lat": lat2, "address": destination_formatted_address},
-        "distence": dist,
+        "distance": dist,
     }])
     return dist
 

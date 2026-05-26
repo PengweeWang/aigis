@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api import AmapClient, direction_distence
+from api import AmapClient, direction_distance
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
@@ -44,10 +44,10 @@ def test_route_planning_bicycling():
     with open(out_dir / "route_planning_bicycling_response.json", "w", encoding="utf-8") as f:
         json.dump(response, f, indent=4, ensure_ascii=False)
         
-def test_direction_distence():
+def test_direction_distance():
     origin = "114.069694,22.620004"
     destination = "114.069925,22.620028"
-    distance = direction_distence(origin, destination)
+    distance = direction_distance(origin, destination)
     print(f"Distance between {origin} and {destination} is {distance} meters.")
     
     
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     test_route_planning_driving()
     test_route_planning_walking()
     test_route_planning_bicycling()
-    test_direction_distence()
+    test_direction_distance()
 
 
 

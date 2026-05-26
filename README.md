@@ -23,7 +23,7 @@
 │  MCP 服务器 (mcps/server.py)    │  ← GIS 工具层
 │  - geocode / geodecode          │
 │  - route_planning               │
-│  - direction_distence           │
+│  - direction_distance           │
 │  - set_final                    │
 │  ┌─────────────────────────┐    │
 │  │  api/amap.py(高德 API)  │    │
