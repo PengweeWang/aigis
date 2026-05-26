@@ -83,4 +83,4 @@ class DbrgClient:
         }
 
     def route_planning(self, origin: str, destination: str, mode: str) -> dict:
-        pass
+        raise NotImplementedError("DbrgClient.route_planning 尚未实现")

@@ -172,7 +172,7 @@ class AmapClient:
 
         return self._parse_route_result(norm, origin)
     
-    def route_planing(self, origin: str, destination: str, mode="driving", strategy=0):
+    def route_planning(self, origin: str, destination: str, mode="driving", strategy=0):
         """
         获取路径规划信息
         :param origin: 起点经纬度字符串，经度在前，纬度在后，经纬度间以“,”分割，经纬度小数点后不要超过 6 位。

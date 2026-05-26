@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import requests
 from pathlib import Path
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -27,7 +28,6 @@ mcp = FastMCP("gis")
 # ---------------------------------------------------------------------------
 def _set(typ: str, data: list) -> None:
     try:
-        import requests
         requests.post(
             f"{DATA_SERVER}/api/set",
             json={"type": typ, "data": data},
@@ -39,7 +39,6 @@ def _set(typ: str, data: list) -> None:
 
 def _patch_final(isFinal: bool) -> None:
     try:
-        import requests
         requests.patch(
             f"{DATA_SERVER}/api/final",
             json={"isFinal": isFinal},
@@ -106,7 +105,7 @@ def route_planning(origin: str, destination: str,
     Polyline coordinates are pushed to the data server for the frontend.
     ```
     """
-    result = client.route_planing(origin, destination, mode, strategy)
+    result = client.route_planning(origin, destination, mode, strategy)
     paths = result.get("paths", [])
 
     lng1, lat1 = map(float, origin.split(","))

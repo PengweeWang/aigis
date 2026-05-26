@@ -51,7 +51,7 @@ def route_planning(origin: str, destination: str,
                    origin_formatted_address: str = "",
                    destination_formatted_address: str = "",
                    mode: str = "driving", strategy: int = 0) -> str:
-    result = client.route_planing(origin, destination, mode, strategy)
+    result = client.route_planning(origin, destination, mode, strategy)
     paths = result.get("paths", [])
 
     lng1, lat1 = map(float, origin.split(","))
