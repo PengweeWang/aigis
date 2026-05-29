@@ -152,3 +152,7 @@ cd web && npm run dev
 ## 许可
 
 MIT
+
+## Acknowledgement
+
+感谢国防科技大学电子科学学院对本项目的资助
